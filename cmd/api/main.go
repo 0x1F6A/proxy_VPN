@@ -19,6 +19,9 @@ import (
 	billingrepo "github.com/0x1F6A/proxy_VPN/internal/billing/infra/gormrepo"
 	billingsvc "github.com/0x1F6A/proxy_VPN/internal/billing/service"
 	billinghttp "github.com/0x1F6A/proxy_VPN/internal/billing/transport/httpapi"
+	noderepo "github.com/0x1F6A/proxy_VPN/internal/node/infra/gormrepo"
+	nodesvc "github.com/0x1F6A/proxy_VPN/internal/node/service"
+	nodehttp "github.com/0x1F6A/proxy_VPN/internal/node/transport/httpapi"
 	"github.com/0x1F6A/proxy_VPN/internal/user/infra/gormrepo"
 	"github.com/0x1F6A/proxy_VPN/internal/user/infra/rediskv"
 	"github.com/0x1F6A/proxy_VPN/internal/user/infra/smtpmail"
@@ -74,7 +77,7 @@ func main() {
 
 	if db != nil && rdb != nil {
 		mountUserAPI(router, cfg, db, rdb)
-		log.Info("user API mounted at /api/v1")
+		log.Info("user / billing / node API mounted at /api/v1")
 	} else {
 		log.Warn("user API not mounted: requires both MySQL and Redis")
 	}
@@ -142,9 +145,31 @@ UserApply: gormrepo.NewBillingApplyRepo(db.DB),
 billingH := billinghttp.New(billingSvc, userHandler.AuthRequired(), httpapi.ClaimsFrom)
 billingH.Register(v1)
 
+// node bounded context: subscriber lookup is fulfilled by the user infra
+// layer so node does not depend on user.
+nodeSvc := nodesvc.New(nodesvc.Deps{
+Nodes:            noderepo.NewNodeRepo(db.DB),
+Groups:           noderepo.NewGroupRepo(db.DB),
+Subs:             gormrepo.NewSubscriberLookupRepo(db.DB),
+BootstrapSecret:  cfg.Node.BootstrapSecret,
+HeartbeatTimeout: cfg.Node.HeartbeatTimeout,
+})
+planLoader := func(c *gin.Context, uid uint64) (*uint64, error) {
+u, err := userRepo.FindByID(c.Request.Context(), uid)
+if err != nil || u == nil {
+	return nil, err
+}
+return u.PlanID, nil
+}
+nodeH := nodehttp.New(nodeSvc, userHandler.AuthRequired(), httpapi.ClaimsFrom, planLoader)
+nodeH.Register(v1, r)
+
 // background workers
 go billingSvc.RunAutoCancelLoop(context.Background(), time.Minute, func(msg string, kv ...any) {
-// best-effort, no logger captured here to keep this helper standalone
+_ = msg
+_ = kv
+})
+go nodeSvc.RunStaleMarker(context.Background(), 30*time.Second, func(msg string, kv ...any) {
 _ = msg
 _ = kv
 })

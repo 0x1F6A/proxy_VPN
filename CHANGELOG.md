@@ -6,6 +6,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Phase 4 (节点与协议：Xray / Sing-box / Hysteria2 + 订阅)
+- 六边形分层 `internal/node/{domain,ports,service,service/subgen,infra/gormrepo,transport/httpapi}`。
+- 节点协议支持：`vless-reality` / `trojan` / `hysteria2` / `ss-2022`（受 `tls_config` + `transport_config` JSON 驱动，pass-through）。
+- 节点 Agent 接入：`POST /api/v1/node-agent/register`（bootstrap secret + 单节点 token）、`POST /api/v1/node-agent/heartbeat`（CPU/MEM/带宽/在线数）；30s 后台 worker `RunStaleMarker` 把超过 `node.heartbeat_timeout` 的节点置 offline。
+- 管理员路由：`/api/v1/admin/nodes`（POST 一次性吐出 bootstrap token）、`/api/v1/admin/node-groups` CRUD，统一走 `RequireRole("admin")`。
+- 用户路由：`GET /api/v1/nodes` 仅返回当前用户套餐 `plan_node_groups` 授权 + serviceable 的节点（隐藏 token / TLS 细节）。
+- 公共订阅 `GET /sub/:token?format=v2ray|clash|sing-box`：
+  - v2ray：share-link 列表 base64（vless-reality/trojan/hysteria2/ss-2022）；
+  - Clash Meta YAML：proxies + PROXY selector group；
+  - Sing-box 1.8 JSON：outbounds + selector + final route。
+  - 响应带 `Subscription-Userinfo` / `Profile-Update-Interval` 头部，兼容 Clash Verge / Shadowrocket。
+- `cmd/node-agent`：注册 → 30s 心跳循环；从 flag 或环境变量读取 bootstrap / token。
+- 配置追加 `node` 段：`bootstrap_secret`、`heartbeat_timeout`、`subscription_base`。
+- `internal/user/infra/gormrepo/SubscriberLookupRepo` 实现 `node/ports.SubscriberPort`，反向依赖避免 node 直接耦合 user。
+- 单测：3 种订阅格式渲染、AgentRegister（bootstrap/token 校验）、Heartbeat → MarkStale、Subscription 各种边界（无 plan / 过期 / 错 format / 错 token）。
+
 ### Added — Phase 3 (套餐、流量包、订单与 Mock 支付)
 - 六边形分层 `internal/billing/{domain,ports,service,infra/gormrepo,transport/httpapi}`。
 - 套餐 / 流量包目录：公开浏览 `GET /api/v1/plans|/data-packs`，管理员 CRUD `POST|PUT|DELETE /api/v1/admin/plans|/admin/data-packs`。

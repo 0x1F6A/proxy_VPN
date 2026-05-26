@@ -22,6 +22,7 @@ type Config struct {
 	JWT   JWTConfig   `mapstructure:"jwt"`
 	SMTP  SMTPConfig  `mapstructure:"smtp"`
 	Rate  RateConfig  `mapstructure:"rate"`
+	Node  NodeConfig  `mapstructure:"node"`
 }
 
 type AppConfig struct {
@@ -71,6 +72,13 @@ type SMTPConfig struct {
 type RateConfig struct {
 	SendCodePerEmailMin int `mapstructure:"send_code_per_email_min"`
 	LoginFailPerIPMin   int `mapstructure:"login_fail_per_ip_min"`
+}
+
+// NodeConfig governs node-agent bootstrap & subscription rendering.
+type NodeConfig struct {
+	BootstrapSecret  string        `mapstructure:"bootstrap_secret"`  // shared secret used by node-agent to register
+	HeartbeatTimeout time.Duration `mapstructure:"heartbeat_timeout"` // mark offline if no HB within
+	SubscriptionBase string        `mapstructure:"subscription_base"` // e.g. https://api.example.com
 }
 
 // Load reads configuration from (in priority order): env vars, ./config.yaml,
@@ -131,6 +139,10 @@ func setDefaults(v *viper.Viper) {
 
 	v.SetDefault("rate.send_code_per_email_min", 1)
 	v.SetDefault("rate.login_fail_per_ip_min", 10)
+
+	v.SetDefault("node.bootstrap_secret", "change-me-bootstrap")
+	v.SetDefault("node.heartbeat_timeout", 90*time.Second)
+	v.SetDefault("node.subscription_base", "http://127.0.0.1:8080")
 }
 
 func envOr(key, fallback string) string {
