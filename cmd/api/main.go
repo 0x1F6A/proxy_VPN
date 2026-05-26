@@ -32,6 +32,7 @@ import (
 	paysvc "github.com/0x1F6A/proxy_VPN/internal/payment/service"
 	payhttp "github.com/0x1F6A/proxy_VPN/internal/payment/transport/httpapi"
 	trafficchsink "github.com/0x1F6A/proxy_VPN/internal/traffic/infra/chsink"
+	"github.com/0x1F6A/proxy_VPN/internal/traffic/infra/chsink/chgo"
 	trafficrepo "github.com/0x1F6A/proxy_VPN/internal/traffic/infra/gormrepo"
 	trafficban "github.com/0x1F6A/proxy_VPN/internal/traffic/infra/redisban"
 	trafficsvc "github.com/0x1F6A/proxy_VPN/internal/traffic/service"
@@ -201,13 +202,37 @@ payH.Register(v1, r)
 // traffic bounded context. ClickHouse is optional; when disabled events
 // fall back to the MySQL usage_event_fallback table (still durable).
 fallback := trafficrepo.NewUsageFallbackSink(db.DB)
-sink, _ := trafficchsink.New(trafficchsink.Config{
+var chDriver trafficchsink.Driver
+if cfg.ClickHouse.Enabled {
+	conn, err := chgo.Open(context.Background(), chgo.Options{
+		Addr:     cfg.ClickHouse.Addr,
+		Database: cfg.ClickHouse.Database,
+		User:     cfg.ClickHouse.User,
+		Password: cfg.ClickHouse.Password,
+	})
+	if err != nil {
+		log.Fatalf("clickhouse open: %v", err)
+	}
+	if err := conn.EnsureDatabase(context.Background(), cfg.ClickHouse.Database); err != nil {
+		log.Fatalf("clickhouse create db: %v", err)
+	}
+	chDriver = conn
+}
+sink, err := trafficchsink.New(trafficchsink.Config{
 	Enabled:       cfg.ClickHouse.Enabled,
 	Database:      cfg.ClickHouse.Database,
 	FlushSize:     cfg.ClickHouse.FlushSize,
 	FlushTimeout:  cfg.ClickHouse.FlushInterval,
 	Fallback:      fallback,
-}, nil)
+}, chDriver)
+if err != nil {
+	log.Fatalf("traffic sink: %v", err)
+}
+if cfg.ClickHouse.Enabled {
+	if err := sink.Bootstrap(context.Background()); err != nil {
+		log.Fatalf("clickhouse bootstrap: %v", err)
+	}
+}
 trafficSvc := trafficsvc.New(trafficsvc.Deps{
 	Sink:   sink,
 	Quota:  trafficrepo.NewQuotaRepo(db.DB),

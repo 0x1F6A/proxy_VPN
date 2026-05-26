@@ -8,7 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 - `internal/pkg/testsupport`: helpers (`StartMySQL`, `StartRedis`) that spin up disposable MySQL/Redis containers via testcontainers-go for integration tests. Migrations are loaded automatically.
-- Integration tests (`//go:build integration` tag) for `traffic/infra/gormrepo` (QuotaRepo + UsageFallbackSink), `traffic/infra/redisban` (BanCache), and `user/infra/gormrepo` (UserRepo + RefreshRepo).
+- Integration tests (`//go:build integration` tag) for `traffic/infra/gormrepo` (QuotaRepo + UsageFallbackSink), `traffic/infra/redisban` (BanCache), `user/infra/gormrepo` (UserRepo + RefreshRepo), and `traffic/infra/chsink` end-to-end against a real ClickHouse container (Bootstrap idempotency + Write + materialised-view rollup readback).
+- `internal/traffic/infra/chsink/chgo`: real ClickHouse driver adapter built on `github.com/ClickHouse/clickhouse-go/v2`. Implements `chsink.Driver` plus an `EnsureDatabase` helper. The CH dependency is isolated to this subpackage so the rest of the tree builds without it.
+- `cmd/api` and `cmd/worker` now open the ClickHouse driver when `clickhouse.enabled=true` and call `Sink.Bootstrap` on startup; previously the `Driver` was always nil so enabling CH would have panicked at construction.
 - `make test-integration` Makefile target.
 
 ### Fixed

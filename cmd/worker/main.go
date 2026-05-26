@@ -31,6 +31,7 @@ import (
 	"github.com/0x1F6A/proxy_VPN/internal/pkg/storage"
 	usergorm "github.com/0x1F6A/proxy_VPN/internal/user/infra/gormrepo"
 	trafficchsink "github.com/0x1F6A/proxy_VPN/internal/traffic/infra/chsink"
+	"github.com/0x1F6A/proxy_VPN/internal/traffic/infra/chsink/chgo"
 	trafficrepo "github.com/0x1F6A/proxy_VPN/internal/traffic/infra/gormrepo"
 	trafficsvc "github.com/0x1F6A/proxy_VPN/internal/traffic/service"
 )
@@ -75,13 +76,37 @@ func main() {
 		NotifyBase: cfg.Payment.NotifyBase,
 	})
 
-	trafficSink, _ := trafficchsink.New(trafficchsink.Config{
+	var chDriver trafficchsink.Driver
+	if cfg.ClickHouse.Enabled {
+		conn, err := chgo.Open(context.Background(), chgo.Options{
+			Addr:     cfg.ClickHouse.Addr,
+			Database: cfg.ClickHouse.Database,
+			User:     cfg.ClickHouse.User,
+			Password: cfg.ClickHouse.Password,
+		})
+		if err != nil {
+			log.Fatalf("clickhouse open: %v", err)
+		}
+		if err := conn.EnsureDatabase(context.Background(), cfg.ClickHouse.Database); err != nil {
+			log.Fatalf("clickhouse create db: %v", err)
+		}
+		chDriver = conn
+	}
+	trafficSink, err := trafficchsink.New(trafficchsink.Config{
 		Enabled:      cfg.ClickHouse.Enabled,
 		Database:     cfg.ClickHouse.Database,
 		FlushSize:    cfg.ClickHouse.FlushSize,
 		FlushTimeout: cfg.ClickHouse.FlushInterval,
 		Fallback:     trafficrepo.NewUsageFallbackSink(db.DB),
-	}, nil)
+	}, chDriver)
+	if err != nil {
+		log.Fatalf("traffic sink: %v", err)
+	}
+	if cfg.ClickHouse.Enabled {
+		if err := trafficSink.Bootstrap(context.Background()); err != nil {
+			log.Fatalf("clickhouse bootstrap: %v", err)
+		}
+	}
 	traffic := trafficsvc.New(trafficsvc.Deps{
 		Sink:   trafficSink,
 		Quota:  trafficrepo.NewQuotaRepo(db.DB),
