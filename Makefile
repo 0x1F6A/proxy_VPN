@@ -75,6 +75,53 @@ web-admin-build: ## Build the React admin SPA and stage it for go:embed
 web-admin-dev: ## Run the React admin SPA dev server (proxies /api to :8081)
 	cd web/admin && npm run dev
 
+# ---------- 本地手动联调 (cmd/admin) ----------
+DEV_DSN ?= root:root@tcp(127.0.0.1:3306)/proxy_vpn?charset=utf8mb4&parseTime=true&loc=UTC
+DEV_ADMIN_EMAIL ?= admin@local.test
+DEV_ADMIN_PASSWORD ?= admin123
+
+.PHONY: dev-up
+dev-up: ## 启动本地 MySQL/Redis/MailHog/Grafana 等开发依赖
+	@[ -f config.yaml ] || (cp config.example.yaml config.yaml && echo ">> 已生成 config.yaml")
+	docker compose -f deploy/docker-compose.dev.yml up -d
+	@echo ">> 等待 MySQL 健康..." && \
+	for i in $$(seq 1 30); do \
+	  docker exec proxy-vpn-mysql mysqladmin ping -h127.0.0.1 -uroot -proot --silent >/dev/null 2>&1 && break; \
+	  sleep 1; \
+	done; echo "   MySQL ready"
+
+.PHONY: dev-down
+dev-down: ## 停止本地开发依赖
+	docker compose -f deploy/docker-compose.dev.yml down
+
+.PHONY: dev-migrate
+dev-migrate: ## 把 internal/migrations 全部 up.sql 顺序应用到本地 MySQL
+	@for f in internal/migrations/*.up.sql; do \
+	  echo ">> apply $$f"; \
+	  docker exec -i proxy-vpn-mysql mysql -uroot -proot proxy_vpn < $$f || exit 1; \
+	done
+	@echo "✅ migrations applied"
+
+.PHONY: dev-seed-admin
+dev-seed-admin: ## 创建/重置一个 admin 账号（默认 admin@local.test / admin123）
+	$(GO) run ./cmd/seed-admin \
+	  --dsn '$(DEV_DSN)' \
+	  --email '$(DEV_ADMIN_EMAIL)' \
+	  --password '$(DEV_ADMIN_PASSWORD)' \
+	  --role admin
+
+.PHONY: run-admin
+run-admin: web-admin-build ## 构建 SPA 后启动 cmd/admin (:8081)，浏览器开 http://127.0.0.1:8081
+	PROXYVPN_HTTP__ADDR=":8081" $(GO) run ./cmd/admin
+
+.PHONY: dev-admin
+dev-admin: dev-up dev-migrate dev-seed-admin ## 一键: 起依赖 + 迁库 + 建管理员 (再手动跑 make run-admin)
+	@echo ""
+	@echo "🎉 准备就绪。下一步:"
+	@echo "    make run-admin          # 构建 SPA 并启动 cmd/admin"
+	@echo "    浏览器打开 http://127.0.0.1:8081"
+	@echo "    账号 $(DEV_ADMIN_EMAIL) / 密码 $(DEV_ADMIN_PASSWORD)"
+
 .PHONY: vet
 vet: ## go vet
 	$(GO) vet ./...

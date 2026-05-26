@@ -25,3 +25,4 @@ web/*/dist/
 # Tracked README.md placeholder lets `go build` succeed without npm.
 cmd/admin/dist/*
 !cmd/admin/dist/README.md
+/seed-admin
