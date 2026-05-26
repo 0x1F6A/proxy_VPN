@@ -42,6 +42,33 @@ func (h *Handler) Register(r *gin.RouterGroup) {
 		u.POST("/2fa/verify", h.totpVerify)
 		u.POST("/2fa/disable", h.totpDisable)
 	}
+
+	admin := r.Group("/admin/users").Use(h.AuthRequired(), h.requireRole("admin", "ops"))
+	{
+		admin.GET("", h.adminListUsers)
+		admin.GET("/summary", h.adminSummary)
+		admin.POST("/:id/ban", h.adminBanUser)
+		admin.POST("/:id/unban", h.adminUnbanUser)
+		admin.POST("/:id/traffic", h.adminAdjustTraffic)
+		admin.POST("/:id/rate", h.adminSetRate)
+	}
+}
+
+func (h *Handler) requireRole(allowed ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		cl := ClaimsFrom(c)
+		if cl == nil {
+			c.AbortWithStatus(401)
+			return
+		}
+		for _, a := range allowed {
+			if cl.Role == a {
+				c.Next()
+				return
+			}
+		}
+		c.AbortWithStatusJSON(403, gin.H{"code": 4003, "message": "insufficient role"})
+	}
 }
 
 // ---- error mapping -----------------------------------------------------

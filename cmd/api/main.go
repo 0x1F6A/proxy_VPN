@@ -140,6 +140,7 @@ Logs:      gormrepo.NewLoginLogRepo(db.DB),
 Mailer:    smtpmail.New(cfg.SMTP),
 Blacklist: blacklist,
 Rate:      limiter,
+Admin:     gormrepo.NewAdminUserRepo(db.DB),
 JWT:       jwtSigner,
 Cfg:       cfg,
 }

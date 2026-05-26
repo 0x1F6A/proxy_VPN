@@ -121,3 +121,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `POST /api/v1/node-agent/config` endpoint (node_token auth, supports `known_hash` short-circuit).
 - node-agent `configloop.go`: periodic config pull, atomic write to `--config-out`, optional `--reload-cmd` exec.
 - `SubscriberPort.ListActive` (excludes banned + expired plans) with gormrepo impl.
+
+## [Unreleased] - Phase 8: Admin user management + RBAC
+
+### Added
+- `ports.AdminUserRepo` + `gormrepo.AdminUserRepo`: list/search users (paged), set-banned, adjust traffic (signed delta with floor 0), set per-user rate limits, overall counts.
+- `user/service` admin methods: `AdminListUsers`, `AdminSetBanned`, `AdminAdjustTraffic`, `AdminSetRateLimits`, `AdminOverallCounts`.
+- HTTP admin routes (admin/ops role):
+  - `GET  /api/v1/admin/users` (q, limit, offset)
+  - `GET  /api/v1/admin/users/summary`
+  - `POST /api/v1/admin/users/:id/ban` / `unban`
+  - `POST /api/v1/admin/users/:id/traffic` (`delta_bytes`)
+  - `POST /api/v1/admin/users/:id/rate`   (`up_bps`, `down_bps`)
+- Reusable `requireRole(...)` middleware in user/transport/httpapi.

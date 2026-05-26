@@ -27,6 +27,7 @@ type Deps struct {
 	Mailer    ports.Mailer
 	Blacklist ports.AccessTokenBlacklist
 	Rate      ports.RateLimiter
+	Admin     ports.AdminUserRepo // optional; admin endpoints disabled if nil
 	JWT       *auth.JWT
 	Cfg       *config.Config
 }

@@ -51,3 +51,39 @@ type RateLimiter interface {
 	// Allow returns true if the key has not yet hit limit in window.
 	Allow(ctx context.Context, key string, limit int, window time.Duration) (bool, error)
 }
+
+// AdminUserView is a flattened projection used by admin list / detail
+// endpoints; intentionally separate from domain.User so we can include
+// computed columns (traffic used %, plan name, etc).
+type AdminUserView struct {
+	ID            uint64
+	Email         string
+	Status        int
+	Role          string
+	PlanID        *uint64
+	PlanExpireAt  *time.Time
+	TrafficTotal  uint64
+	TrafficUsed   uint64
+	RateBpsUp     uint64
+	RateBpsDown   uint64
+	Banned        bool
+	CreatedAt     time.Time
+	LastLoginAt   *time.Time
+}
+
+// AdminUserRepo exposes admin-only read+mutation paths on the users table.
+type AdminUserRepo interface {
+	List(ctx context.Context, q string, limit, offset int) ([]AdminUserView, int64, error)
+	SetBanned(ctx context.Context, id uint64, banned bool) error
+	AdjustTraffic(ctx context.Context, id uint64, deltaBytes int64) error
+	SetRateLimits(ctx context.Context, id uint64, upBps, downBps uint64) error
+	OverallCounts(ctx context.Context) (AdminCounts, error)
+}
+
+// AdminCounts is the dashboard top-row metric.
+type AdminCounts struct {
+	TotalUsers   int64
+	ActiveUsers  int64
+	BannedUsers  int64
+	ActivePlans  int64 // users with non-expired plan
+}
