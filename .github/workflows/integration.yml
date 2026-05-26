@@ -1,0 +1,49 @@
+name: Integration Tests
+
+# Runs the `//go:build integration` test suite against real MySQL, Redis and
+# ClickHouse containers spun up by testcontainers-go on the runner's Docker
+# daemon. This pipeline is slow (multiple container pulls + boots) so we
+# only run it nightly and on manual dispatch — the standard CI workflow
+# keeps the unit suite fast.
+
+on:
+  schedule:
+    # 03:00 UTC daily
+    - cron: "0 3 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  integration:
+    name: Integration (MySQL + Redis + ClickHouse)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Pre-pull container images
+        run: |
+          docker pull mysql:8.0
+          docker pull redis:7-alpine
+          docker pull clickhouse/clickhouse-server:24.3-alpine
+
+      - name: Run integration test suite
+        env:
+          # Disable testcontainers' Ryuk reaper: GitHub-hosted runners
+          # already tear down the VM at the end of the job, so the reaper
+          # only adds startup latency.
+          TESTCONTAINERS_RYUK_DISABLED: "true"
+        run: |
+          go test -tags=integration -count=1 -timeout=20m -v ./...
