@@ -25,4 +25,6 @@ var (
 
 	ErrPasswordWeak     = errors.New("password too weak (min 8 chars)")
 	ErrEmailInvalid     = errors.New("email format invalid")
+
+	ErrForbidden        = errors.New("forbidden")
 )

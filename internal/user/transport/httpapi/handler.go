@@ -17,10 +17,20 @@ type Handler struct {
 	svc       *service.Service
 	jwt       *auth.JWT
 	blacklist ports.AccessTokenBlacklist
+	oidcVer   service.OIDCVerifier
+	oidcStore service.OIDCStateStore
 }
 
 func New(svc *service.Service, jwt *auth.JWT, bl ports.AccessTokenBlacklist) *Handler {
 	return &Handler{svc: svc, jwt: jwt, blacklist: bl}
+}
+
+// WithOIDC enables /auth/oidc/* routes. Pass both verifier and state
+// store; if either is nil OIDC routes are skipped.
+func (h *Handler) WithOIDC(v service.OIDCVerifier, s service.OIDCStateStore) *Handler {
+	h.oidcVer = v
+	h.oidcStore = s
+	return h
 }
 
 // Register attaches all user routes to the given router group. The /user/*
@@ -33,6 +43,10 @@ func (h *Handler) Register(r *gin.RouterGroup) {
 		auth.POST("/login", h.login)
 		auth.POST("/refresh", h.refresh)
 		auth.POST("/logout", h.AuthRequired(), h.logout)
+		if h.oidcVer != nil && h.oidcStore != nil {
+			auth.GET("/oidc/login", h.oidcLogin)
+			auth.GET("/oidc/callback", h.oidcCallback)
+		}
 	}
 	u := r.Group("/user").Use(h.AuthRequired())
 	{
@@ -89,7 +103,8 @@ func mapErr(c *gin.Context, err error) {
 		errors.Is(err, domain.ErrRefreshInvalid):
 		c.JSON(http.StatusUnauthorized, gin.H{"code": 4001, "message": err.Error()})
 	case errors.Is(err, domain.ErrUserDisabled),
-		errors.Is(err, domain.ErrUserPending):
+		errors.Is(err, domain.ErrUserPending),
+		errors.Is(err, domain.ErrForbidden):
 		c.JSON(http.StatusForbidden, gin.H{"code": 4003, "message": err.Error()})
 	case errors.Is(err, domain.ErrUserNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"code": 4004, "message": err.Error()})

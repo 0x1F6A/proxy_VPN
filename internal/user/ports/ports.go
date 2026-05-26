@@ -13,9 +13,11 @@ type UserRepo interface {
 	Create(ctx context.Context, u *domain.User) error
 	FindByEmail(ctx context.Context, email string) (*domain.User, error)
 	FindByID(ctx context.Context, id uint64) (*domain.User, error)
+	FindByOIDCSubject(ctx context.Context, subject string) (*domain.User, error)
 	UpdatePassword(ctx context.Context, id uint64, hash string) error
 	UpdateLogin(ctx context.Context, id uint64, at time.Time, ip string) error
 	UpdateTOTP(ctx context.Context, id uint64, secret string, enabled bool) error
+	LinkOIDCSubject(ctx context.Context, id uint64, subject string) error
 }
 
 type RefreshRepo interface {

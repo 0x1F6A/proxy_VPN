@@ -80,6 +80,24 @@ func (f *fakeUserRepo) UpdateTOTP(_ context.Context, id uint64, secret string, e
 	}
 	return nil
 }
+func (f *fakeUserRepo) FindByOIDCSubject(_ context.Context, subject string) (*domain.User, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, u := range f.byID {
+		if u.OIDCSubject == subject && subject != "" {
+			return u, nil
+		}
+	}
+	return nil, domain.ErrUserNotFound
+}
+func (f *fakeUserRepo) LinkOIDCSubject(_ context.Context, id uint64, subject string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if u, ok := f.byID[id]; ok {
+		u.OIDCSubject = subject
+	}
+	return nil
+}
 
 type fakeRefreshRepo struct {
 	mu   sync.Mutex

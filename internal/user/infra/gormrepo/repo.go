@@ -34,6 +34,7 @@ type userRow struct {
 	InviteCode        string
 	LastLoginAt       *time.Time
 	LastLoginIP       string
+	OIDCSubject       *string `gorm:"column:oidc_subject"`
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 	DeletedAt         gorm.DeletedAt `gorm:"index"`
@@ -42,6 +43,11 @@ type userRow struct {
 func (userRow) TableName() string { return "users" }
 
 func toUserRow(u *domain.User) *userRow {
+	var sub *string
+	if u.OIDCSubject != "" {
+		s := u.OIDCSubject
+		sub = &s
+	}
 	return &userRow{
 		ID: u.ID, Email: u.Email, PasswordHash: u.PasswordHash, UUID: u.UUID,
 		Role: u.Role, Status: u.Status, BalanceCNY: u.BalanceCNY,
@@ -52,10 +58,15 @@ func toUserRow(u *domain.User) *userRow {
 		TOTPEnabled: u.TOTPEnabled, InvitedBy: u.InvitedBy,
 		InviteCode: u.InviteCode, LastLoginAt: u.LastLoginAt,
 		LastLoginIP: u.LastLoginIP,
+		OIDCSubject: sub,
 	}
 }
 
 func fromUserRow(r *userRow) *domain.User {
+	sub := ""
+	if r.OIDCSubject != nil {
+		sub = *r.OIDCSubject
+	}
 	return &domain.User{
 		ID: r.ID, Email: r.Email, PasswordHash: r.PasswordHash, UUID: r.UUID,
 		Role: r.Role, Status: r.Status, BalanceCNY: r.BalanceCNY,
@@ -66,7 +77,8 @@ func fromUserRow(r *userRow) *domain.User {
 		TOTPEnabled: r.TOTPEnabled, InvitedBy: r.InvitedBy,
 		InviteCode: r.InviteCode, LastLoginAt: r.LastLoginAt,
 		LastLoginIP: r.LastLoginIP,
-		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		OIDCSubject: sub,
+		CreatedAt:   r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}
 }
 
@@ -124,6 +136,23 @@ func (r *UserRepo) UpdateLogin(ctx context.Context, id uint64, at time.Time, ip 
 func (r *UserRepo) UpdateTOTP(ctx context.Context, id uint64, secret string, enabled bool) error {
 	return r.db.WithContext(ctx).Model(&userRow{}).Where("id = ?", id).
 		Updates(map[string]any{"totp_secret": secret, "totp_enabled": enabled}).Error
+}
+
+func (r *UserRepo) FindByOIDCSubject(ctx context.Context, subject string) (*domain.User, error) {
+	var row userRow
+	err := r.db.WithContext(ctx).Where("oidc_subject = ?", subject).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, domain.ErrUserNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return fromUserRow(&row), nil
+}
+
+func (r *UserRepo) LinkOIDCSubject(ctx context.Context, id uint64, subject string) error {
+	return r.db.WithContext(ctx).Model(&userRow{}).Where("id = ?", id).
+		Update("oidc_subject", subject).Error
 }
 
 // ---------- RefreshRepo -------------------------------------------------

@@ -27,6 +27,8 @@ type Config struct {
 	Asynq      AsynqConfig      `mapstructure:"asynq"`
 	Traffic    TrafficConfig    `mapstructure:"traffic"`
 	ClickHouse ClickHouseConfig `mapstructure:"clickhouse"`
+	OIDC       OIDCConfig       `mapstructure:"oidc"`
+	SLA        SLAConfig        `mapstructure:"sla"`
 }
 
 type AppConfig struct {
@@ -150,6 +152,36 @@ type TrafficConfig struct {
 	RateDefaultDownMbps uint64       `mapstructure:"rate_default_down_mbps"`
 }
 
+// OIDCConfig enables admin SSO via a generic OIDC provider (Google,
+// GitHub via OIDC bridge, Okta, etc.). When Enabled is false the OIDC
+// endpoints are not mounted and login falls back to email + password.
+type OIDCConfig struct {
+	Enabled         bool     `mapstructure:"enabled"`
+	Issuer          string   `mapstructure:"issuer"`
+	ClientID        string   `mapstructure:"client_id"`
+	ClientSecret    string   `mapstructure:"client_secret"`
+	RedirectURL     string   `mapstructure:"redirect_url"`
+	Scopes          []string `mapstructure:"scopes"`
+	AllowedDomains  []string `mapstructure:"allowed_domains"`
+	AllowedEmails   []string `mapstructure:"allowed_emails"`
+	AdminEmails     []string `mapstructure:"admin_emails"`
+	StateTTL        time.Duration `mapstructure:"state_ttl"`
+}
+
+// SLAConfig drives the self-probe + daily rollup pipeline.
+type SLAConfig struct {
+	Enabled       bool          `mapstructure:"enabled"`
+	Region        string        `mapstructure:"region"`
+	ProbeInterval time.Duration `mapstructure:"probe_interval"`
+	ProbeTimeout  time.Duration `mapstructure:"probe_timeout"`
+	Targets       []SLATarget   `mapstructure:"targets"`
+}
+
+type SLATarget struct {
+	Name string `mapstructure:"name"`
+	URL  string `mapstructure:"url"`
+}
+
 // ClickHouseConfig configures the optional traffic-event sink.
 type ClickHouseConfig struct {
 	Enabled       bool          `mapstructure:"enabled"`
@@ -243,6 +275,15 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("clickhouse.database", "proxy_vpn")
 	v.SetDefault("clickhouse.flush_size", 500)
 	v.SetDefault("clickhouse.flush_interval", 15*time.Second)
+
+	v.SetDefault("oidc.enabled", false)
+	v.SetDefault("oidc.scopes", []string{"openid", "email", "profile"})
+	v.SetDefault("oidc.state_ttl", 5*time.Minute)
+
+	v.SetDefault("sla.enabled", false)
+	v.SetDefault("sla.region", "default")
+	v.SetDefault("sla.probe_interval", time.Minute)
+	v.SetDefault("sla.probe_timeout", 5*time.Second)
 }
 
 func envOr(key, fallback string) string {

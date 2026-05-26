@@ -6,6 +6,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Phase 14-C: 企业级 SSO + SLA 自探活报表
+- `internal/pkg/config`: 新增 `OIDCConfig`（issuer/client_id/secret/redirect_url/scopes/allowed_domains/allowed_emails/admin_emails/state_ttl）+ `SLAConfig`（enabled/region/probe_interval/timeout/targets），全部带零值默认，老配置零破坏。
+- `internal/user`: domain.User 增加 `OIDCSubject`；ports.UserRepo 增加 `FindByOIDCSubject` / `LinkOIDCSubject`；service 新增 `oidc.go`（`BeginAuth` + `CompleteAuth` + `findOrLinkOIDCUser` 三路：subject 命中 / email 命中后挂 subject / 全新自动注册），强制 `email_verified=true`，按 `AdminEmails` 映射 admin 角色，命中白名单/域名才放行（`ErrForbidden`）。
+- `internal/user/infra/oidcprov`: 基于 `github.com/coreos/go-oidc/v3` + `golang.org/x/oauth2` 的 verifier 实现，封装 `Exchange` + `AuthCodeURL`。
+- `internal/user/infra/oidcstate`: Redis state 存储，写入时 TTL，回调时 `GetDel` 单次原子消费防重放。
+- `internal/user/transport/httpapi/oidc.go`: `GET /api/v1/auth/oidc/login?next=` 302 跳 IDP；`GET /api/v1/auth/oidc/callback` 默认返回 JSON token，若 `next` 带 `text/html` 则 302 回 `next#access_token=...&refresh_token=...`（SPA popup 与重定向两种 UX 均覆盖）。
+- `internal/migrations/000005_user_oidc.up.sql`: users 表加 `oidc_subject VARCHAR(191) NULL UNIQUE`，允许已有 email/password 用户与 IDP 双向并存。
+- `internal/sla`: 全新模块（domain/ports/service/infra/transport）。`Service` 暴露 `Record`（asynq prober 调用）/ `RollupDay`（按 region+target 分组，sort+索引法算 p50/p95/p99）/ `Summary`（按 target 聚合 uptime% + p95），日表幂等 upsert 用原生 `ON DUPLICATE KEY UPDATE`。
+- `internal/sla/infra/prober`: HTTP `GET` 探活，2xx-3xx 视为 success，记录 `latency_ms` + 错误信息（255 字符截断）。
+- `internal/sla/transport/httpapi`: `GET /api/v1/admin/reports/sla?from=YYYY-MM-DD&to=YYYY-MM-DD[&target=]`，复用 admin 鉴权。
+- `internal/migrations/000006_sla.up.sql`: `sla_probes`（明细，按 ts 索引）+ `sla_daily`（聚合，`UNIQUE(day,region,target)`）。
+- `internal/pkg/asynqx/tasks`: 新增 `TypeSLAProbe` + `TypeSLARollupDaily` + 构造器 + Deps 字段 + 任务处理器。
+- `cmd/admin`: OIDC 启用时初始化 verifier + state store 并注入 user handler；reportH 之后挂 SLA report 路由（复用 `AuthRequired` + admin roleOf）。
+- `cmd/worker`: 构造 sla service + prober，按 `cfg.SLA.ProbeInterval`（默认 1m）跑 `SLAProbe`，每天 00:05 跑 `SLARollupDaily` 滚动前一天。
+- `docs/architecture.md`: 新增 §11.2 SLA 数据流（probe→daily→report）+ §12.1 OIDC SSO 流程（authorize→callback→token→自动注册/链接）。
+- `docs/ops.md`: 新增「OIDC 配置示例」（Google / GitHub / Okta）+「SLA 大盘解读」章节。
+- 测试：`internal/user/service/oidc_test.go`（白名单/admin 映射/state 缺失/email 未验证 4 个场景）；`internal/sla/service/service_test.go`（percentiles 边界、RollupDay 幂等、Record 必填校验、Summary 区间校验）。
+
 ### Added — Phase 14-A: 多控制面跨区灾备
 - `internal/pkg/config`: `MySQLConfig` 新增 `ReadReplicas []string` + `ResolverPolicy`（`random` 默认 / `round_robin`）；`RedisConfig` 新增 `Mode`（`standalone` 默认 / `sentinel`）+ `MasterName` + `SentinelAddrs`，全部带零值默认确保老配置零破坏。
 - `internal/pkg/storage`: `NewMySQL` 在 `ReadReplicas` 非空时挂 `gorm.io/plugin/dbresolver`，SELECT 自动负载到只读池，写流量留在主库；新增 `HasReplicas()` / `ReadPing(ctx)` 与本地 `roundRobinPolicy`。`NewRedis` 在 `Mode=sentinel` 走 `redis.NewFailoverClient`，自动跟随主库重选举。

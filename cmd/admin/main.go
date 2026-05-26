@@ -25,6 +25,8 @@ import (
 	"syscall"
 	"time"
 
+	"log/slog"
+
 	"github.com/gin-gonic/gin"
 
 	billingrepo "github.com/0x1F6A/proxy_VPN/internal/billing/infra/gormrepo"
@@ -49,9 +51,14 @@ import (
 	"github.com/0x1F6A/proxy_VPN/internal/pkg/logger"
 	"github.com/0x1F6A/proxy_VPN/internal/pkg/storage"
 	reportrepo "github.com/0x1F6A/proxy_VPN/internal/report/infra/gormrepo"
+	slagormrepo "github.com/0x1F6A/proxy_VPN/internal/sla/infra/gormrepo"
+	slasvc "github.com/0x1F6A/proxy_VPN/internal/sla/service"
+	slahttp "github.com/0x1F6A/proxy_VPN/internal/sla/transport/httpapi"
 	reportsvc "github.com/0x1F6A/proxy_VPN/internal/report/service"
 	reporthttp "github.com/0x1F6A/proxy_VPN/internal/report/transport/httpapi"
 	"github.com/0x1F6A/proxy_VPN/internal/user/infra/gormrepo"
+	"github.com/0x1F6A/proxy_VPN/internal/user/infra/oidcprov"
+	"github.com/0x1F6A/proxy_VPN/internal/user/infra/oidcstate"
 	"github.com/0x1F6A/proxy_VPN/internal/user/infra/rediskv"
 	"github.com/0x1F6A/proxy_VPN/internal/user/infra/smtpmail"
 	"github.com/0x1F6A/proxy_VPN/internal/user/ports"
@@ -198,6 +205,23 @@ func mountAdminAPI(r *gin.Engine, cfg *config.Config, db *storage.MySQL, rdb *st
 	}
 	var _ ports.UserRepo = deps.Users
 	userHandler := httpapi.New(service.New(deps), jwtSigner, blacklist)
+	if cfg.OIDC.Enabled && cfg.OIDC.Issuer != "" && cfg.OIDC.ClientID != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		ver, err := oidcprov.New(ctx, oidcprov.Config{
+			Issuer:       cfg.OIDC.Issuer,
+			ClientID:     cfg.OIDC.ClientID,
+			ClientSecret: cfg.OIDC.ClientSecret,
+			RedirectURL:  cfg.OIDC.RedirectURL,
+			Scopes:       cfg.OIDC.Scopes,
+		})
+		if err != nil {
+			slog.Warn("oidc disabled: failed to initialise", "err", err.Error())
+		} else {
+			userHandler.WithOIDC(ver, oidcstate.New(rdb.Client))
+			slog.Info("oidc enabled", "issuer", cfg.OIDC.Issuer)
+		}
+	}
 	v1 := r.Group("/api/v1")
 	userHandler.Register(v1)
 
@@ -252,6 +276,18 @@ func mountAdminAPI(r *gin.Engine, cfg *config.Config, db *storage.MySQL, rdb *st
 		},
 	)
 	reportH.Register(v1)
+
+	slaH := slahttp.New(
+		slasvc.New(slagormrepo.NewProbeRepo(db.DB), slagormrepo.NewDailyRepo(db.DB)),
+		userHandler.AuthRequired(),
+		func(c *gin.Context) string {
+			if cl := httpapi.ClaimsFrom(c); cl != nil {
+				return cl.Role
+			}
+			return ""
+		},
+	)
+	slaH.Register(v1)
 }
 
 // buildPaymentProviders mirrors cmd/api's helper. We need it for the

@@ -196,3 +196,100 @@ values-prod-ap-tokyo.yaml 同上，DSN/Sentinel 地址改成本区域 read repli
 4. 更新备区 values 的 DSN 指向 promoted host，`helm upgrade`
 5. 在 Cloudflare 把 us-east origin 手动 disable，确认流量 5min 内全切到 tokyo
 6. 写 runbook 记录 + 反向恢复（把老主库重做成新主库的 replica）
+
+---
+
+## OIDC SSO 配置示例（Phase 14-C）
+
+### Google Workspace
+
+```yaml
+oidc:
+  enabled: true
+  issuer: "https://accounts.google.com"
+  client_id: "xxxxx.apps.googleusercontent.com"
+  client_secret: "GOCSPX-xxxx"
+  redirect_url: "https://admin.example.com/api/v1/auth/oidc/callback"
+  scopes: ["openid", "email", "profile"]
+  allowed_domains: ["example.com"]
+  admin_emails: ["boss@example.com", "ops@example.com"]
+  state_ttl: 5m
+```
+
+### GitHub（通过 IdP 转 OIDC，如 Dex / Authentik）
+
+```yaml
+oidc:
+  enabled: true
+  issuer: "https://auth.example.com/realms/proxyvpn"
+  client_id: "proxyvpn-admin"
+  client_secret: "${OIDC_SECRET}"  # 从 env / vault 注入
+  redirect_url: "https://admin.example.com/api/v1/auth/oidc/callback"
+  scopes: ["openid", "email", "profile"]
+  allowed_emails: ["specific@external.com"]
+  admin_emails: ["specific@external.com"]
+```
+
+### Okta
+
+```yaml
+oidc:
+  enabled: true
+  issuer: "https://your-tenant.okta.com/oauth2/default"
+  client_id: "0oaXXXXXX"
+  client_secret: "${OKTA_SECRET}"
+  redirect_url: "https://admin.example.com/api/v1/auth/oidc/callback"
+  scopes: ["openid", "email", "profile"]
+  allowed_domains: ["company.com"]
+  admin_emails: ["sso-admin@company.com"]
+```
+
+校验：
+- `curl -fsSL "$ISSUER/.well-known/openid-configuration" | jq .` 必须能拿到 jwks_uri
+- 在 IDP 后台把 `redirect_url` 完整字符串加白
+- 启用后，admin 登录页应出现「使用 OIDC 登录」按钮（前端读 `/api/v1/auth/oidc/login` 是否 200/302）
+
+---
+
+## SLA 大盘解读（Phase 14-C）
+
+### 配置示例
+
+```yaml
+sla:
+  enabled: true
+  region: "us-east-1"            # 写入 sla_probes.region，便于多区对比
+  probe_interval: 1m             # asynq scheduler cron
+  timeout: 5s                    # HTTP client 超时
+  targets:
+    - name: "api"
+      url: "https://api.example.com/readyz"
+    - name: "user-web"
+      url: "https://app.example.com/readyz"
+    - name: "admin"
+      url: "https://admin.example.com/readyz"
+```
+
+### 查询 API
+
+```bash
+# 最近 7 天 api 目标
+curl -H "Authorization: Bearer $ADMIN_TOKEN" \
+  "https://admin.example.com/api/v1/admin/reports/sla?from=2026-05-20&to=2026-05-27&target=api"
+```
+
+返回字段：
+- `uptime_pct`：日聚合成功率算术平均（用于「3 个 9」类对外承诺）
+- `p50_ms / p95_ms / p99_ms`：每日 p95 集合再取 p95（"p95 of p95s"，对外 SLA 通常引用 p95）
+- `samples`：参与计算的天数 × probe 数
+
+### 大盘排错
+
+- 突然 0 样本：检查 worker 是否在线 + `cfg.SLA.Enabled`
+- uptime_pct 阶梯式下跌：通常是探针目标 TLS 证书过期 / DNS 漂移
+- p99 飙升但 uptime 平稳：往往是出口节点单点慢，对照 traffic 大盘按节点维度排查
+
+### 数据生命周期
+
+- `sla_probes` 建议保留 30 天（cron job 清理）
+- `sla_daily` 保留 2 年（聚合表体积小，季度回看 / 合规审计需要）

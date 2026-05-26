@@ -410,3 +410,64 @@ usdt-watcher (独立进程):
 
 **变更日志**
 - v0.1 (2026-05-26)：初版详细架构。
+
+---
+
+## 11.2 SLA 自探活数据流（Phase 14-C）
+
+```
+┌──────────┐   asynq @every 1m    ┌──────────┐ HTTP GET ┌─────────────┐
+│ worker   │ ───────────────────► │ Prober   │ ──────► │ probe target│
+│ scheduler│                      └────┬─────┘          └─────────────┘
+└──────────┘                           │ Record
+                                       ▼
+                              ┌──────────────────┐
+                              │ sla_probes (明细) │
+                              └────────┬─────────┘
+        asynq cron "5 0 * * *"        │ RollupDay (UTC truncate)
+                                       ▼
+                              ┌──────────────────┐
+                              │ sla_daily (聚合)  │  UNIQUE(day,region,target)
+                              └────────┬─────────┘
+                              GET /admin/reports/sla
+                                       ▼
+                                  admin 后台
+```
+
+- `Prober` 失败容忍：单次失败仅记录 `success=false` + err 文本，不重试（避免雪崩）
+- `RollupDay` 幂等：基于 `ON DUPLICATE KEY UPDATE`，可补跑任意历史日
+- 分位算法：`sort + xs[len*p]`，每日样本量 < 1500 时性能可接受
+- 默认 `cfg.SLA.Enabled=false`，零配置时 worker 不发起任何外部 HTTP
+
+## 12.1 OIDC SSO 登录流程（Phase 14-C）
+
+```
+┌──────────┐                                              ┌────────────┐
+│ 用户浏览器│ 1. GET /api/v1/auth/oidc/login?next=/admin  │ admin/api  │
+└────┬─────┘ ───────────────────────────────────────────► │ user-web   │
+     │                                                    └────┬───────┘
+     │ 2. 302 → IDP authorize?state=…                          │ Save(state) to Redis
+     ▼                                                          │ (TTL 5m)
+┌──────────┐                                                    │
+│   IDP    │ 3. 登录 + 同意                                     │
+└────┬─────┘                                                    │
+     │ 4. 302 → /api/v1/auth/oidc/callback?code&state           │
+     ▼                                                          │
+┌──────────┐ 5. GetDel(state) 一次性消费                        │
+│  backend │ 6. Exchange(code) → ID Token + email/email_verified│
+│          │ 7. 白名单校验 (AllowedDomains/AllowedEmails)       │
+│          │ 8. FindByOIDCSubject → FindByEmail → 自动注册      │
+│          │ 9. AdminEmails 命中 → role=admin                   │
+│          │ 10. issueTokens(access + refresh)                  │
+└────┬─────┘                                                    │
+     │ 11. JSON {access_token, refresh_token}                   │
+     │     或 302 next#access_token=…&refresh_token=…           │
+     ▼                                                          │
+   前端写 storage → 进入 admin                                  │
+```
+
+安全要点：
+- state 走 Redis `GetDel`，单次原子消费防重放；TTL `cfg.OIDC.StateTTL`（默认 5m）
+- 强制 `email_verified=true`，否则 401
+- 三段授权链（AdminEmails ∪ AllowedEmails 显式优先；AllowedDomains 域名兜底；全空 = 开发模式放行）
+- subject 优先级 > email：同邮箱换 IDP 不会丢账号；首次 callback 用 subject 直查命中

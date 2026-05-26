@@ -34,6 +34,7 @@ type User struct {
 	LastLoginIP       string
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
+	OIDCSubject       string
 }
 
 // RefreshToken represents one issued refresh token entry. We persist the

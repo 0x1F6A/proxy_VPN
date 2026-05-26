@@ -24,6 +24,8 @@ const (
 	TypeTrafficFlushCH     = "traffic:flush_ch_buffer"
 	TypeTrafficRollupDaily = "traffic:rollup_daily"
 	TypeTrafficRecomputeBan = "traffic:recompute_bans"
+	TypeSLAProbe            = "sla:probe"
+	TypeSLARollupDaily      = "sla:rollup_daily"
 )
 
 // Payloads ---------------------------------------------------------------
@@ -56,6 +58,8 @@ func NewTrafficRollupDaily() *asynq.Task { return asynq.NewTask(TypeTrafficRollu
 func NewTrafficRecomputeBans() *asynq.Task {
 	return asynq.NewTask(TypeTrafficRecomputeBan, nil)
 }
+func NewSLAProbe() *asynq.Task       { return asynq.NewTask(TypeSLAProbe, nil) }
+func NewSLARollupDaily() *asynq.Task { return asynq.NewTask(TypeSLARollupDaily, nil) }
 
 // Handlers ---------------------------------------------------------------
 
@@ -70,6 +74,8 @@ type Deps struct {
 	TrafficFlushCH   func(ctx context.Context) error
 	TrafficRollup    func(ctx context.Context) (int64, error)
 	TrafficRecompute func(ctx context.Context) (int, int, error)
+	SLAProbe         func(ctx context.Context) error
+	SLARollupDaily   func(ctx context.Context) (int, error)
 	Log              func(string, ...any)
 }
 
@@ -167,6 +173,25 @@ func Mount(mux *asynq.ServeMux, d Deps) {
 		}
 		if banned > 0 || unbanned > 0 {
 			d.Log("traffic.recompute_bans", "banned", banned, "unbanned", unbanned)
+		}
+		return nil
+	})
+	mux.HandleFunc(TypeSLAProbe, func(ctx context.Context, _ *asynq.Task) error {
+		if d.SLAProbe == nil {
+			return nil
+		}
+		return d.SLAProbe(ctx)
+	})
+	mux.HandleFunc(TypeSLARollupDaily, func(ctx context.Context, _ *asynq.Task) error {
+		if d.SLARollupDaily == nil {
+			return nil
+		}
+		n, err := d.SLARollupDaily(ctx)
+		if err != nil {
+			return err
+		}
+		if n > 0 {
+			d.Log("sla.rollup_daily", "rows", n)
 		}
 		return nil
 	})

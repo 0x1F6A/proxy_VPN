@@ -30,6 +30,9 @@ import (
 	"github.com/0x1F6A/proxy_VPN/internal/pkg/logger"
 	"github.com/0x1F6A/proxy_VPN/internal/pkg/storage"
 	usergorm "github.com/0x1F6A/proxy_VPN/internal/user/infra/gormrepo"
+	slagormrepo "github.com/0x1F6A/proxy_VPN/internal/sla/infra/gormrepo"
+	slaprober "github.com/0x1F6A/proxy_VPN/internal/sla/infra/prober"
+	slasvc "github.com/0x1F6A/proxy_VPN/internal/sla/service"
 	trafficchsink "github.com/0x1F6A/proxy_VPN/internal/traffic/infra/chsink"
 	"github.com/0x1F6A/proxy_VPN/internal/traffic/infra/chsink/chgo"
 	trafficrepo "github.com/0x1F6A/proxy_VPN/internal/traffic/infra/gormrepo"
@@ -115,6 +118,17 @@ func main() {
 		Log:    lg.Info,
 	})
 
+	sla := slasvc.New(slagormrepo.NewProbeRepo(db.DB), slagormrepo.NewDailyRepo(db.DB))
+	var prober *slaprober.Prober
+	if cfg.SLA.Enabled && len(cfg.SLA.Targets) > 0 {
+		targets := make([]slaprober.Target, len(cfg.SLA.Targets))
+		for i, t := range cfg.SLA.Targets {
+			targets[i] = slaprober.Target{Name: t.Name, URL: t.URL}
+		}
+		prober = slaprober.New(sla, cfg.SLA.Region, targets, cfg.SLA.ProbeTimeout)
+		lg.Info("sla prober enabled", "region", cfg.SLA.Region, "targets", len(targets))
+	}
+
 	axCfg := asynqx.Config{
 		RedisAddr:     cfg.Redis.Addr,
 		RedisPassword: cfg.Redis.Password,
@@ -137,6 +151,16 @@ func main() {
 		TrafficRecompute: func(ctx context.Context) (int, int, error) {
 			return traffic.RecomputeBans(ctx, 500)
 		},
+		SLAProbe: func(ctx context.Context) error {
+			if prober == nil {
+				return nil
+			}
+			prober.RunOnce(ctx)
+			return nil
+		},
+		SLARollupDaily: func(ctx context.Context) (int, error) {
+			return sla.RollupDay(ctx, time.Now().Add(-24*time.Hour))
+		},
 		Log:              lg.Info,
 	})
 
@@ -151,6 +175,14 @@ func main() {
 	mustSchedule(scheduler, "@every 15s", tasks.NewTrafficFlushCH())
 	mustSchedule(scheduler, "@every 1m", tasks.NewTrafficRecomputeBans())
 	mustSchedule(scheduler, "30 1 * * *", tasks.NewTrafficRollupDaily())
+	if cfg.SLA.Enabled {
+		interval := cfg.SLA.ProbeInterval
+		if interval <= 0 {
+			interval = time.Minute
+		}
+		mustSchedule(scheduler, "@every "+interval.String(), tasks.NewSLAProbe())
+		mustSchedule(scheduler, "5 0 * * *", tasks.NewSLARollupDaily())
+	}
 
 	var wg sync.WaitGroup
 	wg.Add(2)
