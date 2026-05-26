@@ -148,3 +148,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 - `chsink.Bootstrap` now also creates `traffic_user_daily` SummingMergeTree + `mv_traffic_user_daily` materialised view, so per-user daily totals stream automatically from the raw events table.
+
+## [Unreleased] - Phase 10: Observability + blue/green ops
+
+### Added
+- `httpx.Metrics()` Gin middleware: `http_requests_total{method,route,status}` counter, `http_request_duration_seconds{method,route}` histogram (5ms..20s exp×2 buckets), `http_requests_in_flight` gauge. Uses `c.FullPath()` for low-cardinality route labels.
+- `docs/ops.md`: Prometheus scrape targets, recommended Grafana panels, starter alerting rules, blue-green & canary deployment runbook, pre-flight checklist & rollback procedure.
+- `internal/pkg/httpx/metrics_test.go`: integration test asserting `/metrics` exposes counters for served routes.
+
+Note: `/healthz`, `/readyz`, `/metrics` endpoints and MySQL/Redis readiness checks were already in place; this phase adds per-request metrics and the operations runbook on top.

@@ -38,6 +38,7 @@ func NewRouter(opt Options) *gin.Engine {
 	r.Use(gin.Recovery())
 	r.Use(requestid.New())
 	r.Use(accessLog(opt.Logger))
+	r.Use(Metrics())
 
 	r.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
