@@ -99,7 +99,8 @@ jobs:
 
       - name: Push chart to GHCR (OCI)
         env:
-          REG: ghcr.io/${{ github.repository_owner }}/charts
+          OWNER_LC: ${{ github.repository_owner }}
         run: |
+          owner_lc=$(echo "$OWNER_LC" | tr '[:upper:]' '[:lower:]')
           echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
-          helm push dist/*.tgz oci://$REG
+          helm push dist/*.tgz "oci://ghcr.io/${owner_lc}/charts"
