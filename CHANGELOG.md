@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Phase 14-B: 客户端 SDK + 参考 CLI
+- `sdk/go/proxyvpn/`：独立 Go module（`github.com/0x1F6A/proxy_VPN/sdk/go`），零非 stdlib 依赖。类型化 client 覆盖 auth / user / billing / payment / subscription / nodes 全部公开端点；统一响应壳解析（`{code,message,data,request_id}`）；401 自动用 refresh_token 换新并重放一次，并发触发时通过 `tokenVersion` double-check 只发一次刷新；错误码常量支持 `errors.Is(err, proxyvpn.ErrInsufficientBalance)`。
+- `sdk/cli/proxyvpnctl/`：独立 module + cobra CLI 参考实现。子命令：`login` / `logout` / `me` / `plans` / `buy` / `pay --watch` / `orders` / `sub` / `nodes`。凭据持久化到 `~/.proxyvpn/credentials.json`（0600），通过 `PROXYVPN_BASE_URL` / `PROXYVPN_CRED_FILE` 环境变量配置。
+- `go.work`：把根 module + `sdk/go` + `sdk/cli` 串成 workspace，本地开发不需要 replace 跳转。
+- `sdk/go/README.md`：5 行 hello world + 错误处理示例。
+- `docs/sdk.md`：SDK 概览、CLI 用法、非 Go 客户端对接协议（统一响应壳 / token 刷新 / 幂等 / 客户端标识 / 订阅端点）、错误码 UX 映射表、未来路线。
+- 测试：`sdk/go/proxyvpn/client_test.go` 用 `httptest` 覆盖 login + Me、401 自动刷新（验证只发一次 refresh + token rotate）、错误码映射（`errors.Is`）、subscription 原文透传、ListPlans 解析。
+
 ### Added — Phase 14-C: 企业级 SSO + SLA 自探活报表
 - `internal/pkg/config`: 新增 `OIDCConfig`（issuer/client_id/secret/redirect_url/scopes/allowed_domains/allowed_emails/admin_emails/state_ttl）+ `SLAConfig`（enabled/region/probe_interval/timeout/targets），全部带零值默认，老配置零破坏。
 - `internal/user`: domain.User 增加 `OIDCSubject`；ports.UserRepo 增加 `FindByOIDCSubject` / `LinkOIDCSubject`；service 新增 `oidc.go`（`BeginAuth` + `CompleteAuth` + `findOrLinkOIDCUser` 三路：subject 命中 / email 命中后挂 subject / 全新自动注册），强制 `email_verified=true`，按 `AdminEmails` 映射 admin 角色，命中白名单/域名才放行（`ErrForbidden`）。
