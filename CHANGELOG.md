@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v0.1.1] - 2026-05-26
+
+### Fixed
+- release workflow: helm OCI push now lowercases the repository owner before pushing to `ghcr.io/<owner>/charts`. v0.1.0 OCI push failed with "invalid_reference: invalid repository" because the owner name contains uppercase letters; the chart was still published as a GH Release asset.
+
 ## [v0.1.0] - 2026-05-26
 
 First tagged release. Includes Phases 1-10 plus deployment & CI/CD pipeline. See per-section entries below.
