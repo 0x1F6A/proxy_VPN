@@ -65,7 +65,32 @@ func (s *Sink) Bootstrap(ctx context.Context) error {
 		down_bytes UInt64
 	) ENGINE = MergeTree PARTITION BY toYYYYMM(ts) ORDER BY (user_id, ts)`,
 		s.cfg.Database, s.cfg.Table)
-	return s.driver.Exec(ctx, ddl)
+	if err := s.driver.Exec(ctx, ddl); err != nil {
+		return err
+	}
+	// Per-user daily rollup materialised view. The downstream table is
+	// SummingMergeTree so identical (user_id, day) rows merge their byte
+	// counters; readers should still wrap reads in SUM() to handle
+	// not-yet-merged parts.
+	rollupTable := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s.traffic_user_daily (
+		day      Date,
+		user_id  UInt64,
+		up_bytes UInt64,
+		down_bytes UInt64
+	) ENGINE = SummingMergeTree PARTITION BY toYYYYMM(day) ORDER BY (user_id, day)`,
+		s.cfg.Database)
+	if err := s.driver.Exec(ctx, rollupTable); err != nil {
+		return err
+	}
+	mv := fmt.Sprintf(`CREATE MATERIALIZED VIEW IF NOT EXISTS %s.mv_traffic_user_daily
+		TO %s.traffic_user_daily AS
+		SELECT toDate(ts) AS day, user_id,
+		       sum(up_bytes)   AS up_bytes,
+		       sum(down_bytes) AS down_bytes
+		FROM %s.%s
+		GROUP BY day, user_id`,
+		s.cfg.Database, s.cfg.Database, s.cfg.Database, s.cfg.Table)
+	return s.driver.Exec(ctx, mv)
 }
 
 func (s *Sink) Write(ctx context.Context, events []domain.UsageEvent) error {

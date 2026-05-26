@@ -134,3 +134,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   - `POST /api/v1/admin/users/:id/traffic` (`delta_bytes`)
   - `POST /api/v1/admin/users/:id/rate`   (`up_bps`, `down_bps`)
 - Reusable `requireRole(...)` middleware in user/transport/httpapi.
+
+## [Unreleased] - Phase 9: Admin reports + ClickHouse rollup MV
+
+### Added
+- New `report` bounded context (ports/service/infra/transport):
+  - `GET /api/v1/admin/reports/revenue?from=YYYY-MM-DD&to=YYYY-MM-DD`
+  - `GET /api/v1/admin/reports/traffic?from&to`
+  - `GET /api/v1/admin/reports/orders?from&to`
+  - `GET /api/v1/admin/dashboard` (KPI snapshot: users/orders/revenue/traffic today)
+- Range validation: max 366 days; from must precede to.
+- Admin/ops/finance role required (reuses JWT claims).
+
+### Changed
+- `chsink.Bootstrap` now also creates `traffic_user_daily` SummingMergeTree + `mv_traffic_user_daily` materialised view, so per-user daily totals stream automatically from the raw events table.

@@ -36,6 +36,9 @@ import (
 	trafficban "github.com/0x1F6A/proxy_VPN/internal/traffic/infra/redisban"
 	trafficsvc "github.com/0x1F6A/proxy_VPN/internal/traffic/service"
 	traffichttp "github.com/0x1F6A/proxy_VPN/internal/traffic/transport/httpapi"
+	reportrepo "github.com/0x1F6A/proxy_VPN/internal/report/infra/gormrepo"
+	reportsvc "github.com/0x1F6A/proxy_VPN/internal/report/service"
+	reporthttp "github.com/0x1F6A/proxy_VPN/internal/report/transport/httpapi"
 	"github.com/0x1F6A/proxy_VPN/internal/user/infra/gormrepo"
 	"github.com/0x1F6A/proxy_VPN/internal/user/infra/rediskv"
 	"github.com/0x1F6A/proxy_VPN/internal/user/infra/smtpmail"
@@ -214,6 +217,19 @@ trafficSvc := trafficsvc.New(trafficsvc.Deps{
 })
 trafficH := traffichttp.New(trafficSvc, cfg.Node.BootstrapSecret, userHandler.AuthRequired(), httpapi.ClaimsFrom)
 trafficH.Register(v1)
+
+// report bounded context — admin-only dashboards & timeseries.
+reportH := reporthttp.New(
+	reportsvc.New(reportrepo.New(db.DB)),
+	userHandler.AuthRequired(),
+	func(c *gin.Context) string {
+		if cl := httpapi.ClaimsFrom(c); cl != nil {
+			return cl.Role
+		}
+		return ""
+	},
+)
+reportH.Register(v1)
 
 // background workers — kept here as in-process fallback for single-node
 // deployments. When cmd/worker is also running, these become redundant
