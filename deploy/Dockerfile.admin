@@ -1,0 +1,46 @@
+# syntax=docker/dockerfile:1.7
+# Dedicated multi-stage build for the admin console: stage 1 builds the
+# React SPA, stage 2 stages it into cmd/admin/dist for go:embed, stage 3
+# compiles the Go binary, final stage runs on distroless.
+#
+#   docker build -f deploy/Dockerfile.admin -t proxy-vpn/admin .
+
+# ---- 1. Frontend ----------------------------------------------------------
+FROM node:20-alpine AS web
+WORKDIR /web
+COPY web/admin/package.json web/admin/package-lock.json* ./
+RUN npm install --no-fund --no-audit
+COPY web/admin/ ./
+RUN npm run build
+
+# ---- 2. Go build ----------------------------------------------------------
+FROM golang:1.25-alpine AS builder
+WORKDIR /src
+RUN apk add --no-cache git ca-certificates
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+# Replace placeholder dist with the freshly built SPA so go:embed picks it up.
+RUN rm -rf cmd/admin/dist && mkdir -p cmd/admin/dist
+COPY --from=web /web/dist/ cmd/admin/dist/
+
+ARG VERSION=dev
+ARG COMMIT=none
+ARG DATE=unknown
+ENV CGO_ENABLED=0 GOFLAGS=-trimpath
+
+RUN go build \
+      -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" \
+      -o /out/admin ./cmd/admin
+
+# ---- 3. Runtime -----------------------------------------------------------
+FROM gcr.io/distroless/static-debian12:nonroot
+WORKDIR /app
+COPY --from=builder /out/admin /app/admin
+COPY --from=builder /src/config.example.yaml /app/config.yaml
+
+USER nonroot:nonroot
+EXPOSE 8081
+ENTRYPOINT ["/app/admin"]

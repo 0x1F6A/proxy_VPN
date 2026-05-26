@@ -56,6 +56,15 @@ type PaymentProvider interface {
 	QueryStatus(ctx context.Context, channelTradeNo string) (domain.Status, error)
 }
 
+// PaymentFilter filters payments for admin listing. Zero-value fields are ignored.
+type PaymentFilter struct {
+	Status  domain.Status
+	Channel domain.Channel
+	OrderNo string
+	From    *time.Time
+	To      *time.Time
+}
+
 // PaymentRepo is the storage port for Payment records.
 type PaymentRepo interface {
 	Create(ctx context.Context, p *domain.Payment) error
@@ -68,6 +77,7 @@ type PaymentRepo interface {
 	UpdateTradeNo(ctx context.Context, id uint64, tradeNo string) error
 	ExpirePending(ctx context.Context, before time.Time) (int64, error)
 	ListPendingByChannel(ctx context.Context, channel domain.Channel, limit int) ([]domain.Payment, error)
+	AdminList(ctx context.Context, f PaymentFilter, limit, offset int) ([]domain.Payment, int64, error)
 }
 
 // AddressPoolRepo manages USDT one-time receiving addresses.

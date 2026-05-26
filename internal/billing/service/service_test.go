@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/0x1F6A/proxy_VPN/internal/billing/domain"
+	"github.com/0x1F6A/proxy_VPN/internal/billing/ports"
 	"github.com/0x1F6A/proxy_VPN/internal/billing/service"
 )
 
@@ -74,6 +75,13 @@ func (f *fakeCouponRepo) IncrementUsage(ctx context.Context, id uint64) error {
 func (f *fakeCouponRepo) CountUsedByUser(ctx context.Context, code string, userID uint64) (int, error) {
 	return f.userUsage[code], nil
 }
+func (f *fakeCouponRepo) List(ctx context.Context, q string, limit, offset int) ([]domain.Coupon, int64, error) {
+	return nil, 0, nil
+}
+func (f *fakeCouponRepo) Get(ctx context.Context, id uint64) (*domain.Coupon, error) { return nil, nil }
+func (f *fakeCouponRepo) Create(ctx context.Context, c *domain.Coupon) error         { return nil }
+func (f *fakeCouponRepo) Update(ctx context.Context, c *domain.Coupon) error         { return nil }
+func (f *fakeCouponRepo) Delete(ctx context.Context, id uint64) error                { return nil }
 
 type fakeOrderRepo struct {
 	mu        sync.Mutex
@@ -109,6 +117,9 @@ func (f *fakeOrderRepo) FindByOrderNo(ctx context.Context, no string) (*domain.O
 }
 func (f *fakeOrderRepo) ListByUser(ctx context.Context, userID uint64, limit, offset int) ([]domain.Order, error) {
 	return nil, nil
+}
+func (f *fakeOrderRepo) AdminList(ctx context.Context, _ ports.OrderFilter, _, _ int) ([]domain.Order, int64, error) {
+	return nil, 0, nil
 }
 func (f *fakeOrderRepo) UpdateStatus(ctx context.Context, no, status string, paidAt *time.Time, paid, ch string) error {
 	f.mu.Lock()

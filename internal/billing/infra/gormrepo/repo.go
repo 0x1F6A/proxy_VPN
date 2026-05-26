@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/0x1F6A/proxy_VPN/internal/billing/domain"
+	"github.com/0x1F6A/proxy_VPN/internal/billing/ports"
 )
 
 // ----- Plan ------------------------------------------------------------
@@ -240,6 +241,87 @@ func (r *CouponRepo) CountUsedByUser(ctx context.Context, code string, userID ui
 	return int(n), err
 }
 
+func couponFromRow(r *couponRow) *domain.Coupon {
+	return &domain.Coupon{
+		ID: r.ID, Code: r.Code, DiscountType: r.DiscountType,
+		DiscountValue: r.DiscountValue, MinAmount: r.MinAmount,
+		Applicable: r.Applicable, TotalQuota: r.TotalQuota,
+		UsedCount: r.UsedCount, PerUserLimit: r.PerUserLimit,
+		StartsAt: r.StartsAt, ExpiresAt: r.ExpiresAt, Status: r.Status,
+	}
+}
+
+func couponToRow(c *domain.Coupon) *couponRow {
+	return &couponRow{
+		ID: c.ID, Code: c.Code, DiscountType: c.DiscountType,
+		DiscountValue: c.DiscountValue, MinAmount: c.MinAmount,
+		Applicable: c.Applicable, TotalQuota: c.TotalQuota,
+		UsedCount: c.UsedCount, PerUserLimit: c.PerUserLimit,
+		StartsAt: c.StartsAt, ExpiresAt: c.ExpiresAt, Status: c.Status,
+	}
+}
+
+func (r *CouponRepo) List(ctx context.Context, q string, limit, offset int) ([]domain.Coupon, int64, error) {
+	tx := r.db.WithContext(ctx).Model(&couponRow{})
+	if q != "" {
+		like := "%" + q + "%"
+		tx = tx.Where("code LIKE ?", like)
+	}
+	var total int64
+	if err := tx.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var rows []couponRow
+	if err := tx.Order("id DESC").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
+		return nil, 0, err
+	}
+	out := make([]domain.Coupon, len(rows))
+	for i := range rows {
+		out[i] = *couponFromRow(&rows[i])
+	}
+	return out, total, nil
+}
+
+func (r *CouponRepo) Get(ctx context.Context, id uint64) (*domain.Coupon, error) {
+	var row couponRow
+	err := r.db.WithContext(ctx).First(&row, id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, domain.ErrCouponNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return couponFromRow(&row), nil
+}
+
+func (r *CouponRepo) Create(ctx context.Context, c *domain.Coupon) error {
+	row := couponToRow(c)
+	if err := r.db.WithContext(ctx).Create(row).Error; err != nil {
+		return err
+	}
+	c.ID = row.ID
+	return nil
+}
+
+func (r *CouponRepo) Update(ctx context.Context, c *domain.Coupon) error {
+	return r.db.WithContext(ctx).Model(&couponRow{}).Where("id = ?", c.ID).Updates(map[string]any{
+		"code":           c.Code,
+		"discount_type":  c.DiscountType,
+		"discount_value": c.DiscountValue,
+		"min_amount":     c.MinAmount,
+		"applicable":     c.Applicable,
+		"total_quota":    c.TotalQuota,
+		"per_user_limit": c.PerUserLimit,
+		"starts_at":      c.StartsAt,
+		"expires_at":     c.ExpiresAt,
+		"status":         c.Status,
+	}).Error
+}
+
+func (r *CouponRepo) Delete(ctx context.Context, id uint64) error {
+	return r.db.WithContext(ctx).Delete(&couponRow{}, id).Error
+}
+
 // ----- Order -----------------------------------------------------------
 
 type orderRow struct {
@@ -338,6 +420,41 @@ func (r *OrderRepo) ListByUser(ctx context.Context, userID uint64, limit, offset
 		out[i] = *ordToDomain(&rows[i])
 	}
 	return out, nil
+}
+
+func (r *OrderRepo) AdminList(ctx context.Context, f ports.OrderFilter, limit, offset int) ([]domain.Order, int64, error) {
+	tx := r.db.WithContext(ctx).Model(&orderRow{})
+	if f.Status != "" {
+		tx = tx.Where("status = ?", f.Status)
+	}
+	if f.Type != "" {
+		tx = tx.Where("type = ?", f.Type)
+	}
+	if f.UserID != 0 {
+		tx = tx.Where("user_id = ?", f.UserID)
+	}
+	if f.OrderNo != "" {
+		tx = tx.Where("order_no LIKE ?", "%"+f.OrderNo+"%")
+	}
+	if f.From != nil {
+		tx = tx.Where("created_at >= ?", *f.From)
+	}
+	if f.To != nil {
+		tx = tx.Where("created_at < ?", *f.To)
+	}
+	var total int64
+	if err := tx.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var rows []orderRow
+	if err := tx.Order("id DESC").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
+		return nil, 0, err
+	}
+	out := make([]domain.Order, len(rows))
+	for i := range rows {
+		out[i] = *ordToDomain(&rows[i])
+	}
+	return out, total, nil
 }
 
 func (r *OrderRepo) UpdateStatus(ctx context.Context, no, status string, paidAt *time.Time, paid, channelNo string) error {

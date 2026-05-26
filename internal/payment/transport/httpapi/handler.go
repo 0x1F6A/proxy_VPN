@@ -39,7 +39,26 @@ func (h *Handler) Register(v1 *gin.RouterGroup, root *gin.Engine) {
 		authed.POST("/orders/:no/pay", h.pay)
 		authed.GET("/payments/:id", h.getPayment)
 	}
+
+	admin := v1.Group("/admin")
+	admin.Use(h.authRequired, h.requireAdmin())
+	{
+		admin.GET("/payments", h.adminListPayments)
+		admin.GET("/payments/:id", h.adminGetPayment)
+	}
+
 	root.POST("/pay/notify/:channel", h.notify)
+}
+
+func (h *Handler) requireAdmin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		cl := h.extractClaims(c)
+		if cl == nil || (cl.Role != "admin" && cl.Role != "ops" && cl.Role != "finance") {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"code": 4003, "message": "admin role required"})
+			return
+		}
+		c.Next()
+	}
 }
 
 func mapErr(c *gin.Context, err error) {

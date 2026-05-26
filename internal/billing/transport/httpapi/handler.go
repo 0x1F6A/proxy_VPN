@@ -60,6 +60,15 @@ func (h *Handler) Register(v1 *gin.RouterGroup) {
 		admin.POST("/data-packs", h.adminCreatePack)
 		admin.PUT("/data-packs/:id", h.adminUpdatePack)
 		admin.DELETE("/data-packs/:id", h.adminDeletePack)
+
+		admin.GET("/coupons", h.adminListCoupons)
+		admin.POST("/coupons", h.adminCreateCoupon)
+		admin.GET("/coupons/:id", h.adminGetCoupon)
+		admin.PUT("/coupons/:id", h.adminUpdateCoupon)
+		admin.DELETE("/coupons/:id", h.adminDeleteCoupon)
+
+		admin.GET("/orders", h.adminListOrders)
+		admin.GET("/orders/:no", h.adminGetOrder)
 	}
 }
 

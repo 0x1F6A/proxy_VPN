@@ -58,7 +58,22 @@ test-integration: ## Run integration tests (requires Docker; spins up MySQL+Redi
 
 .PHONY: test-e2e
 test-e2e: ## Run e2e API tests (requires Docker; spins up MySQL+Redis + boots full API in-process)
-	$(GO) test -tags="integration e2e" -count=1 -timeout=10m ./cmd/api/...
+	$(GO) test -tags="integration e2e" -count=1 -timeout=10m ./cmd/api/... ./cmd/admin/...
+
+.PHONY: web-admin-install
+web-admin-install: ## Install web/admin dependencies
+	cd web/admin && npm install --no-fund --no-audit
+
+.PHONY: web-admin-build
+web-admin-build: ## Build the React admin SPA and stage it for go:embed
+	cd web/admin && npm run build
+	rm -rf cmd/admin/dist
+	mkdir -p cmd/admin/dist
+	cp -R web/admin/dist/. cmd/admin/dist/
+
+.PHONY: web-admin-dev
+web-admin-dev: ## Run the React admin SPA dev server (proxies /api to :8081)
+	cd web/admin && npm run dev
 
 .PHONY: vet
 vet: ## go vet

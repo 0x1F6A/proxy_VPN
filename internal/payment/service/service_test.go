@@ -138,6 +138,10 @@ func (r *fakePaymentRepo) ListPendingByChannel(_ context.Context, ch domain.Chan
 	return out, nil
 }
 
+func (r *fakePaymentRepo) AdminList(_ context.Context, _ ports.PaymentFilter, _, _ int) ([]domain.Payment, int64, error) {
+	return nil, 0, nil
+}
+
 type fakeBilling struct {
 	amount string
 	uid    uint64

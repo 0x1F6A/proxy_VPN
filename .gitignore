@@ -20,3 +20,8 @@ config.yaml
 web/*/node_modules/
 web/*/.next/
 web/*/dist/
+/admin
+# Staged frontend for go:embed; produced by 'make web-admin-build'.
+# Tracked README.md placeholder lets `go build` succeed without npm.
+cmd/admin/dist/*
+!cmd/admin/dist/README.md

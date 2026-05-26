@@ -29,6 +29,23 @@ type CouponRepo interface {
 	// IncrementUsage atomically increments used_count, refusing if exhausted.
 	IncrementUsage(ctx context.Context, id uint64) error
 	CountUsedByUser(ctx context.Context, code string, userID uint64) (int, error)
+
+	// Admin CRUD
+	List(ctx context.Context, q string, limit, offset int) ([]domain.Coupon, int64, error)
+	Get(ctx context.Context, id uint64) (*domain.Coupon, error)
+	Create(ctx context.Context, c *domain.Coupon) error
+	Update(ctx context.Context, c *domain.Coupon) error
+	Delete(ctx context.Context, id uint64) error
+}
+
+// OrderFilter filters orders for admin listing. Zero-value fields are ignored.
+type OrderFilter struct {
+	Status  string
+	Type    string
+	UserID  uint64
+	OrderNo string
+	From    *time.Time
+	To      *time.Time
 }
 
 type OrderRepo interface {
@@ -36,6 +53,7 @@ type OrderRepo interface {
 	FindByIdempotency(ctx context.Context, userID uint64, key string) (*domain.Order, error)
 	FindByOrderNo(ctx context.Context, no string) (*domain.Order, error)
 	ListByUser(ctx context.Context, userID uint64, limit, offset int) ([]domain.Order, error)
+	AdminList(ctx context.Context, f OrderFilter, limit, offset int) ([]domain.Order, int64, error)
 	UpdateStatus(ctx context.Context, no string, status string, paidAt *time.Time, paid string, channelNo string) error
 	ExpirePending(ctx context.Context, before time.Time) (int64, error)
 }

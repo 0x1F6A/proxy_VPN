@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Phase 11: Admin Console
+- `cmd/admin`: 独立的管理后台二进制，默认监听 `:8081`。复用 `cmd/api` 的 Bootstrap（MySQL/Redis/JWT/各 service 装配），全量挂载 `/api/v1` 路由，登录走 `POST /api/v1/auth/login`，由 `auth.Claims.Role` 限制 admin/ops/finance 才能访问 `/api/v1/admin/*`。
+- `internal/pkg/audit`: 新增审计中间件（Record/Writer/ClaimsExtractor + GORM 实现），自动落 `admin_audit_logs` 表。POST/PUT/DELETE/PATCH 异步写入（4 KB payload 截断），GET/4xx/5xx 跳过。`cmd/admin` 通过 path-prefix 过滤只对 `/api/v1/admin/*` 生效。
+- `internal/billing` admin API 补齐：`CouponRepo` 加 `List/Get/Create/Update/Delete`，`OrderRepo` 加 `AdminList` + `OrderFilter`，新 `service/admin.go` + `transport/httpapi/admin_extra.go` 暴露 `/api/v1/admin/coupons[/:id]` 和 `/api/v1/admin/orders[/:no]`。
+- `internal/payment` admin API：`PaymentRepo.AdminList` + `PaymentFilter` + `service/admin.go` + `transport/httpapi/admin.go`；`requireAdmin` 接受 admin/ops/finance 三种角色（兼顾财务对账场景）。
+- `cmd/admin/e2e_test.go` (`//go:build integration && e2e`): admin 登录 → 列用户 → 封禁目标用户 → 验证 audit_logs 行写入的端到端测试。Makefile `test-e2e` 已加 `./cmd/admin/...`。
+- `web/admin`: React 18 + TypeScript + Vite + Ant Design 5 + TanStack Query + Zustand + react-router 的完整后台 SPA，包含 Login + Dashboard + Users + Orders + Payments + Plans + Coupons + DataPacks + Nodes + NodeGroups + Reports 11 个页面，axios 拦截器统一处理鉴权与 401 跳转。
+- `cmd/admin/web.go`: `go:embed all:dist` 嵌入前端产物，未命中静态资源时回落到 `index.html`（SPA 路由）。
+- `deploy/Dockerfile.admin`: 三段式镜像（node:20 build SPA → golang:1.25 build embed → distroless）；release.yml 对 `admin` matrix 走该 Dockerfile，其它 binary 仍走 `deploy/Dockerfile`。
+- Makefile 新增 `web-admin-install` / `web-admin-build` / `web-admin-dev` 目标；后者会把 `web/admin/dist/*` 拷到 `cmd/admin/dist/` 供 go:embed 使用。
+
 ## [v0.2.0] - 2026-05-26
 
 ### Added

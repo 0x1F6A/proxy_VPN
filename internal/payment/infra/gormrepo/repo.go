@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	"github.com/0x1F6A/proxy_VPN/internal/payment/domain"
+	"github.com/0x1F6A/proxy_VPN/internal/payment/ports"
 )
 
 // ----- Payment ---------------------------------------------------------
@@ -185,6 +186,38 @@ func (r *PaymentRepo) ListPendingByChannel(ctx context.Context, channel domain.C
 		out = append(out, *pmToDomain(&rows[i]))
 	}
 	return out, nil
+}
+
+func (r *PaymentRepo) AdminList(ctx context.Context, f ports.PaymentFilter, limit, offset int) ([]domain.Payment, int64, error) {
+	tx := r.db.WithContext(ctx).Model(&paymentRow{})
+	if f.Status != "" {
+		tx = tx.Where("status = ?", string(f.Status))
+	}
+	if f.Channel != "" {
+		tx = tx.Where("channel = ?", string(f.Channel))
+	}
+	if f.OrderNo != "" {
+		tx = tx.Where("order_no LIKE ?", "%"+f.OrderNo+"%")
+	}
+	if f.From != nil {
+		tx = tx.Where("created_at >= ?", *f.From)
+	}
+	if f.To != nil {
+		tx = tx.Where("created_at < ?", *f.To)
+	}
+	var total int64
+	if err := tx.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var rows []paymentRow
+	if err := tx.Order("id DESC").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
+		return nil, 0, err
+	}
+	out := make([]domain.Payment, len(rows))
+	for i := range rows {
+		out[i] = *pmToDomain(&rows[i])
+	}
+	return out, total, nil
 }
 
 // ----- Address pool ----------------------------------------------------

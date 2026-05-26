@@ -53,7 +53,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: deploy/Dockerfile
+          file: ${{ matrix.bin == 'admin' && 'deploy/Dockerfile.admin' || 'deploy/Dockerfile' }}
           platforms: linux/amd64,linux/arm64
           build-args: |
             BIN=${{ matrix.bin }}
