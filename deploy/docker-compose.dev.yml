@@ -1,0 +1,137 @@
+# proxy_VPN 本地开发栈
+#
+# 启动:  docker compose -f deploy/docker-compose.dev.yml up -d
+# 查看:  docker compose -f deploy/docker-compose.dev.yml ps
+# 停止:  docker compose -f deploy/docker-compose.dev.yml down
+# 重置数据: docker compose -f deploy/docker-compose.dev.yml down -v
+#
+# 端口分配 (映射到宿主机):
+#   3306  MySQL
+#   6379  Redis
+#   8025  MailHog Web UI    (SMTP: 1025)
+#   9090  Prometheus
+#   3000  Grafana           (admin / admin)
+#   3100  Loki              (内网 push)
+#
+# 数据卷:
+#   mysql-data, redis-data, prometheus-data, grafana-data, loki-data
+#
+# 网络: 单一桥接网 proxy_vpn_dev，方便后续把 api 容器加进来联通。
+
+name: proxy-vpn-dev
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: proxy-vpn-mysql
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+00:00
+      - --innodb-buffer-pool-size=256M
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: proxy_vpn
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot", "--silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks: [dev]
+
+  redis:
+    image: redis:7-alpine
+    container_name: proxy-vpn-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1000"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [dev]
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: proxy-vpn-mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI
+    networks: [dev]
+
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    container_name: proxy-vpn-prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:9090/-/healthy"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+    networks: [dev]
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: proxy-vpn-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    networks: [dev]
+
+  loki:
+    image: grafana/loki:3.2.0
+    container_name: proxy-vpn-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki-data:/loki
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3100/ready"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+    networks: [dev]
+
+volumes:
+  mysql-data:
+  redis-data:
+  prometheus-data:
+  grafana-data:
+  loki-data:
+
+networks:
+  dev:
+    name: proxy_vpn_dev
+    driver: bridge

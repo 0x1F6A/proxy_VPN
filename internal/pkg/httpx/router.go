@@ -4,7 +4,9 @@
 package httpx
 
 import (
+	"context"
 	"net/http"
+	"time"
 
 	"github.com/gin-contrib/requestid"
 	"github.com/gin-gonic/gin"
@@ -13,9 +15,18 @@ import (
 	"github.com/0x1F6A/proxy_VPN/internal/pkg/logger"
 )
 
+// ReadinessCheck describes a single dependency probed by /readyz. Name is
+// reported in the response so operators can pinpoint failures.
+type ReadinessCheck struct {
+	Name  string
+	Check func(ctx context.Context) error
+}
+
 type Options struct {
-	Version string
-	Logger  *logger.Logger
+	Version          string
+	Logger           *logger.Logger
+	ReadinessChecks  []ReadinessCheck
+	ReadinessTimeout time.Duration
 }
 
 // NewRouter returns a gin Engine pre-configured with recovery, request ID,
@@ -35,9 +46,28 @@ func NewRouter(opt Options) *gin.Engine {
 		})
 	})
 
-	// readyz is intentionally minimal in Phase 0 — Phase 1 wires DB/Redis pings.
+	timeout := opt.ReadinessTimeout
+	if timeout <= 0 {
+		timeout = 2 * time.Second
+	}
 	r.GET("/readyz", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ready"})
+		results := make(map[string]string, len(opt.ReadinessChecks))
+		status := http.StatusOK
+		ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
+		defer cancel()
+		for _, chk := range opt.ReadinessChecks {
+			if err := chk.Check(ctx); err != nil {
+				results[chk.Name] = "fail: " + err.Error()
+				status = http.StatusServiceUnavailable
+				continue
+			}
+			results[chk.Name] = "ok"
+		}
+		body := gin.H{"status": "ready", "checks": results}
+		if status != http.StatusOK {
+			body["status"] = "not_ready"
+		}
+		c.JSON(status, body)
 	})
 
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
