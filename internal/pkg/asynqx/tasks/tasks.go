@@ -21,6 +21,9 @@ const (
 	TypeReconcilePayments  = "payment:reconcile_channel"
 	TypeExpirePayments     = "payment:expire_pending"
 	TypeScanUSDTBlock      = "payment:scan_usdt_block"
+	TypeTrafficFlushCH     = "traffic:flush_ch_buffer"
+	TypeTrafficRollupDaily = "traffic:rollup_daily"
+	TypeTrafficRecomputeBan = "traffic:recompute_bans"
 )
 
 // Payloads ---------------------------------------------------------------
@@ -48,6 +51,11 @@ func NewReconcileChannel(channel domain.Channel, limit int) *asynq.Task {
 func NewScanUSDTBlock() *asynq.Task {
 	return asynq.NewTask(TypeScanUSDTBlock, nil)
 }
+func NewTrafficFlushCH() *asynq.Task    { return asynq.NewTask(TypeTrafficFlushCH, nil) }
+func NewTrafficRollupDaily() *asynq.Task { return asynq.NewTask(TypeTrafficRollupDaily, nil) }
+func NewTrafficRecomputeBans() *asynq.Task {
+	return asynq.NewTask(TypeTrafficRecomputeBan, nil)
+}
 
 // Handlers ---------------------------------------------------------------
 
@@ -59,6 +67,9 @@ type Deps struct {
 	PaymentReconcile func(ctx context.Context, channel domain.Channel, limit int) (int, error)
 	PaymentExpire    func(ctx context.Context) (int64, error)
 	USDTStep         func(ctx context.Context) (int, error)
+	TrafficFlushCH   func(ctx context.Context) error
+	TrafficRollup    func(ctx context.Context) (int64, error)
+	TrafficRecompute func(ctx context.Context) (int, int, error)
 	Log              func(string, ...any)
 }
 
@@ -124,6 +135,38 @@ func Mount(mux *asynq.ServeMux, d Deps) {
 		}
 		if n > 0 {
 			d.Log("payment.usdt_scan", "matched", n)
+		}
+		return nil
+	})
+	mux.HandleFunc(TypeTrafficFlushCH, func(ctx context.Context, _ *asynq.Task) error {
+		if d.TrafficFlushCH == nil {
+			return nil
+		}
+		return d.TrafficFlushCH(ctx)
+	})
+	mux.HandleFunc(TypeTrafficRollupDaily, func(ctx context.Context, _ *asynq.Task) error {
+		if d.TrafficRollup == nil {
+			return nil
+		}
+		n, err := d.TrafficRollup(ctx)
+		if err != nil {
+			return err
+		}
+		if n > 0 {
+			d.Log("traffic.rollup", "rows", n)
+		}
+		return nil
+	})
+	mux.HandleFunc(TypeTrafficRecomputeBan, func(ctx context.Context, _ *asynq.Task) error {
+		if d.TrafficRecompute == nil {
+			return nil
+		}
+		banned, unbanned, err := d.TrafficRecompute(ctx)
+		if err != nil {
+			return err
+		}
+		if banned > 0 || unbanned > 0 {
+			d.Log("traffic.recompute_bans", "banned", banned, "unbanned", unbanned)
 		}
 		return nil
 	})

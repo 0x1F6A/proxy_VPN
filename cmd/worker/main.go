@@ -30,6 +30,9 @@ import (
 	"github.com/0x1F6A/proxy_VPN/internal/pkg/logger"
 	"github.com/0x1F6A/proxy_VPN/internal/pkg/storage"
 	usergorm "github.com/0x1F6A/proxy_VPN/internal/user/infra/gormrepo"
+	trafficchsink "github.com/0x1F6A/proxy_VPN/internal/traffic/infra/chsink"
+	trafficrepo "github.com/0x1F6A/proxy_VPN/internal/traffic/infra/gormrepo"
+	trafficsvc "github.com/0x1F6A/proxy_VPN/internal/traffic/service"
 )
 
 var version = "dev"
@@ -72,6 +75,21 @@ func main() {
 		NotifyBase: cfg.Payment.NotifyBase,
 	})
 
+	trafficSink, _ := trafficchsink.New(trafficchsink.Config{
+		Enabled:      cfg.ClickHouse.Enabled,
+		Database:     cfg.ClickHouse.Database,
+		FlushSize:    cfg.ClickHouse.FlushSize,
+		FlushTimeout: cfg.ClickHouse.FlushInterval,
+		Fallback:     trafficrepo.NewUsageFallbackSink(db.DB),
+	}, nil)
+	traffic := trafficsvc.New(trafficsvc.Deps{
+		Sink:   trafficSink,
+		Quota:  trafficrepo.NewQuotaRepo(db.DB),
+		Subs:   usergorm.NewTrafficSubscriberResolver(db.DB),
+		BanTTL: cfg.Traffic.BanCacheTTL,
+		Log:    lg.Info,
+	})
+
 	axCfg := asynqx.Config{
 		RedisAddr:     cfg.Redis.Addr,
 		RedisPassword: cfg.Redis.Password,
@@ -89,6 +107,11 @@ func main() {
 		PaymentExpire:    pay.ExpireOldPending,
 		PaymentReconcile: pay.ReconcileChannel,
 		USDTStep:         nil, // optional: wire a Scanner here once live providers are configured
+		TrafficFlushCH:   func(ctx context.Context) error { return nil }, // chsink writes are synchronous
+		TrafficRollup:    func(ctx context.Context) (int64, error) { return 0, nil }, // online upsert covers UI
+		TrafficRecompute: func(ctx context.Context) (int, int, error) {
+			return traffic.RecomputeBans(ctx, 500)
+		},
 		Log:              lg.Info,
 	})
 
@@ -100,6 +123,9 @@ func main() {
 	mustSchedule(scheduler, "@every 5m", tasks.NewReconcileChannel(paydomain.ChannelAlipay, 100))
 	mustSchedule(scheduler, "@every 5m", tasks.NewReconcileChannel(paydomain.ChannelWechat, 100))
 	mustSchedule(scheduler, "@every 15s", tasks.NewScanUSDTBlock())
+	mustSchedule(scheduler, "@every 15s", tasks.NewTrafficFlushCH())
+	mustSchedule(scheduler, "@every 1m", tasks.NewTrafficRecomputeBans())
+	mustSchedule(scheduler, "30 1 * * *", tasks.NewTrafficRollupDaily())
 
 	var wg sync.WaitGroup
 	wg.Add(2)

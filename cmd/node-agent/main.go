@@ -41,6 +41,7 @@ func main() {
 	bootstrap := flag.String("bootstrap", os.Getenv("PROXYVPN_BOOTSTRAP"), "bootstrap secret")
 	nodeToken := flag.String("token", os.Getenv("PROXYVPN_NODE_TOKEN"), "per-node bootstrap token")
 	interval := flag.Duration("interval", 30*time.Second, "heartbeat interval")
+	nodeID := flag.Uint64("node-id", uint64Env("PROXYVPN_NODE_ID"), "control-plane assigned node id (for traffic reports)")
 	flag.Parse()
 
 	if *bootstrap == "" || *nodeToken == "" {
@@ -56,6 +57,12 @@ func main() {
 	log.Println("registered successfully; entering heartbeat loop")
 
 	ctx, cancel := context.WithCancel(context.Background())
+	if *nodeID > 0 {
+		_ = runTrafficLoops(ctx, *endpoint, *bootstrap, *nodeID, 60*time.Second, 30*time.Second)
+		log.Printf("traffic loops started (node_id=%d)", *nodeID)
+	} else {
+		log.Println("traffic loops disabled (no --node-id provided)")
+	}
 	go func() {
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
@@ -117,5 +124,20 @@ func envOr(k, d string) string {
 		return v
 	}
 	return d
+}
+
+func uint64Env(k string) uint64 {
+	v := os.Getenv(k)
+	if v == "" {
+		return 0
+	}
+	var n uint64
+	for _, c := range v {
+		if c < '0' || c > '9' {
+			return 0
+		}
+		n = n*10 + uint64(c-'0')
+	}
+	return n
 }
 

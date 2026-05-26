@@ -23,8 +23,10 @@ type Config struct {
 	SMTP    SMTPConfig    `mapstructure:"smtp"`
 	Rate    RateConfig    `mapstructure:"rate"`
 	Node    NodeConfig    `mapstructure:"node"`
-	Payment PaymentConfig `mapstructure:"payment"`
-	Asynq   AsynqConfig   `mapstructure:"asynq"`
+	Payment    PaymentConfig    `mapstructure:"payment"`
+	Asynq      AsynqConfig      `mapstructure:"asynq"`
+	Traffic    TrafficConfig    `mapstructure:"traffic"`
+	ClickHouse ClickHouseConfig `mapstructure:"clickhouse"`
 }
 
 type AppConfig struct {
@@ -127,6 +129,25 @@ type AsynqConfig struct {
 	// re-uses redis from RedisConfig
 }
 
+// TrafficConfig governs node-agent reporting cadence and ban-cache TTL.
+type TrafficConfig struct {
+	ReportInterval     time.Duration `mapstructure:"report_interval"`
+	BanCacheTTL        time.Duration `mapstructure:"ban_cache_ttl"`
+	RateDefaultUpMbps   uint64       `mapstructure:"rate_default_up_mbps"`
+	RateDefaultDownMbps uint64       `mapstructure:"rate_default_down_mbps"`
+}
+
+// ClickHouseConfig configures the optional traffic-event sink.
+type ClickHouseConfig struct {
+	Enabled       bool          `mapstructure:"enabled"`
+	Addr          string        `mapstructure:"addr"`
+	Database      string        `mapstructure:"database"`
+	User          string        `mapstructure:"user"`
+	Password      string        `mapstructure:"password"`
+	FlushSize     int           `mapstructure:"flush_size"`
+	FlushInterval time.Duration `mapstructure:"flush_interval"`
+}
+
 // Load reads configuration from (in priority order): env vars, ./config.yaml,
 // ./deploy/config.yaml, and a built-in default.
 func Load() (*Config, error) {
@@ -199,6 +220,16 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("payment.usdt.contract_addr", "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t")
 
 	v.SetDefault("asynq.concurrency", 8)
+
+	v.SetDefault("traffic.report_interval", 60*time.Second)
+	v.SetDefault("traffic.ban_cache_ttl", 24*time.Hour)
+	v.SetDefault("traffic.rate_default_up_mbps", 0)
+	v.SetDefault("traffic.rate_default_down_mbps", 0)
+
+	v.SetDefault("clickhouse.enabled", false)
+	v.SetDefault("clickhouse.database", "proxy_vpn")
+	v.SetDefault("clickhouse.flush_size", 500)
+	v.SetDefault("clickhouse.flush_interval", 15*time.Second)
 }
 
 func envOr(key, fallback string) string {

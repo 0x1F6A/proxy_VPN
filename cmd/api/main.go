@@ -31,6 +31,11 @@ import (
 	wechatprov "github.com/0x1F6A/proxy_VPN/internal/payment/provider/wechat"
 	paysvc "github.com/0x1F6A/proxy_VPN/internal/payment/service"
 	payhttp "github.com/0x1F6A/proxy_VPN/internal/payment/transport/httpapi"
+	trafficchsink "github.com/0x1F6A/proxy_VPN/internal/traffic/infra/chsink"
+	trafficrepo "github.com/0x1F6A/proxy_VPN/internal/traffic/infra/gormrepo"
+	trafficban "github.com/0x1F6A/proxy_VPN/internal/traffic/infra/redisban"
+	trafficsvc "github.com/0x1F6A/proxy_VPN/internal/traffic/service"
+	traffichttp "github.com/0x1F6A/proxy_VPN/internal/traffic/transport/httpapi"
 	"github.com/0x1F6A/proxy_VPN/internal/user/infra/gormrepo"
 	"github.com/0x1F6A/proxy_VPN/internal/user/infra/rediskv"
 	"github.com/0x1F6A/proxy_VPN/internal/user/infra/smtpmail"
@@ -188,6 +193,26 @@ paySvc := paysvc.New(paysvc.Deps{
 })
 payH := payhttp.New(paySvc, userHandler.AuthRequired(), httpapi.ClaimsFrom)
 payH.Register(v1, r)
+
+// traffic bounded context. ClickHouse is optional; when disabled events
+// fall back to the MySQL usage_event_fallback table (still durable).
+fallback := trafficrepo.NewUsageFallbackSink(db.DB)
+sink, _ := trafficchsink.New(trafficchsink.Config{
+	Enabled:       cfg.ClickHouse.Enabled,
+	Database:      cfg.ClickHouse.Database,
+	FlushSize:     cfg.ClickHouse.FlushSize,
+	FlushTimeout:  cfg.ClickHouse.FlushInterval,
+	Fallback:      fallback,
+}, nil)
+trafficSvc := trafficsvc.New(trafficsvc.Deps{
+	Sink:   sink,
+	Quota:  trafficrepo.NewQuotaRepo(db.DB),
+	Bans:   trafficban.New(rdb.Client),
+	Subs:   gormrepo.NewTrafficSubscriberResolver(db.DB),
+	BanTTL: cfg.Traffic.BanCacheTTL,
+})
+trafficH := traffichttp.New(trafficSvc, cfg.Node.BootstrapSecret, userHandler.AuthRequired(), httpapi.ClaimsFrom)
+trafficH.Register(v1)
 
 // background workers — kept here as in-process fallback for single-node
 // deployments. When cmd/worker is also running, these become redundant

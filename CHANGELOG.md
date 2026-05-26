@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] - Phase 6: Traffic accounting & ban list
+
+### Added
+- New bounded context `internal/traffic` with domain / ports / service / infra layers (gormrepo / redisban / chsink).
+- ClickHouse sink scaffolding (`internal/traffic/infra/chsink`) with `Driver` interface so MySQL-only environments still work via `usage_event_fallback`.
+- Migration `000003_traffic` — `users` gets `rate_bps_up/down`, `banned`; new `traffic_daily` and `usage_event_fallback` tables.
+- HTTP endpoints: `POST /api/v1/nodes/usage`, `GET /api/v1/nodes/banlist` (bootstrap-secret auth), `GET /api/v1/me/usage`, `GET /api/v1/me/usage/daily` (JWT auth).
+- Asynq tasks: `traffic:flush_ch_buffer` (15s), `traffic:recompute_bans` (1m), `traffic:rollup_daily` (01:30 daily).
+- node-agent: periodic usage reports + ban-list polling (gated by `--node-id`).
+- Config: `clickhouse.*` and `traffic.*` sections with sane defaults.
+
+### Changed
+- `cmd/api` and `cmd/worker` now construct & wire the traffic service.
+- `internal/pkg/asynqx/tasks` registers the three new traffic task handlers.
+
+
 ## [Unreleased]
 
 ### Added — Phase 5 (真实支付 + Asynq 异步调度)
