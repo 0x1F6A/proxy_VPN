@@ -75,6 +75,21 @@ web-admin-build: ## Build the React admin SPA and stage it for go:embed
 web-admin-dev: ## Run the React admin SPA dev server (proxies /api to :8081)
 	cd web/admin && npm run dev
 
+.PHONY: web-user-install
+web-user-install: ## Install web/user dependencies
+	cd web/user && npm install --no-fund --no-audit
+
+.PHONY: web-user-build
+web-user-build: ## Build the React user SPA and stage it for go:embed
+	cd web/user && npm run build
+	rm -rf cmd/user-web/dist
+	mkdir -p cmd/user-web/dist
+	cp -R web/user/dist/. cmd/user-web/dist/
+
+.PHONY: web-user-dev
+web-user-dev: ## Run the React user SPA dev server (proxies /api and /sub to :8082)
+	cd web/user && npm run dev
+
 # ---------- 本地手动联调 (cmd/admin) ----------
 DEV_DSN ?= root:root@tcp(127.0.0.1:3306)/proxy_vpn?charset=utf8mb4&parseTime=true&loc=UTC
 DEV_ADMIN_EMAIL ?= admin@local.test
@@ -113,6 +128,10 @@ dev-seed-admin: ## 创建/重置一个 admin 账号（默认 admin@local.test / 
 .PHONY: run-admin
 run-admin: web-admin-build ## 构建 SPA 后启动 cmd/admin (:8081)，浏览器开 http://127.0.0.1:8081
 	PROXYVPN_HTTP__ADDR=":8081" $(GO) run ./cmd/admin
+
+.PHONY: run-user-web
+run-user-web: web-user-build ## 构建 SPA 后启动 cmd/user-web (:8082)，浏览器开 http://127.0.0.1:8082
+	PROXYVPN_HTTP__ADDR=":8082" $(GO) run ./cmd/user-web
 
 .PHONY: dev-admin
 dev-admin: dev-up dev-migrate dev-seed-admin ## 一键: 起依赖 + 迁库 + 建管理员 (再手动跑 make run-admin)

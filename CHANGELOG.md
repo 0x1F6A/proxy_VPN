@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Phase 12: User Web Portal
+- `cmd/user-web`: 独立的用户端 Web 二进制，默认监听 `:8082`。复用 `cmd/api` 的全部 bounded contexts（user/billing/payment/node/report），但不挂载 admin 审计中间件——专供普通用户走浏览器登录、买套餐、付款、拉订阅。
+- `web/user`: React 18 + TypeScript + Vite + Ant Design 5 + TanStack Query + Zustand + react-router 的用户面 SPA，9 个页面：登录 / 注册（带 60 秒验证码倒计时）/ 仪表盘（余额、流量、套餐到期、邀请码、快速入口）/ 套餐与流量包 / 订单（取消 / 去支付）/ 支付页（多渠道二维码 + USDT 地址金额 + mock-pay + 3s 轮询订单状态）/ 订阅（clash / sing-box / v2ray-base64 + 二维码 + Token 复制）/ 节点列表（30s 轮询）/ 邀请 / 账号（改密 + 2FA enroll/disable）/ 帮助（多平台客户端下载 + FAQ）。
+- `cmd/user-web/web.go`: `go:embed all:dist` 嵌入前端产物，SPA fallback 跳过 `/api/`、`/sub/`、`/pay/notify/`、`/healthz`、`/readyz` 等后端路径。
+- `deploy/Dockerfile.user-web`: 三段式镜像（node:20 build SPA → golang:1.25 build embed → distroless）；`release.yml` matrix 加 `user-web`，走该 Dockerfile。
+- Makefile 新增 `web-user-install` / `web-user-build` / `web-user-dev` / `run-user-web` 目标；后者构建 SPA 后以 `PROXYVPN_HTTP__ADDR=:8082` 启动 `cmd/user-web`。
+
 ### Added — Phase 11: Admin Console
 - `cmd/admin`: 独立的管理后台二进制，默认监听 `:8081`。复用 `cmd/api` 的 Bootstrap（MySQL/Redis/JWT/各 service 装配），全量挂载 `/api/v1` 路由，登录走 `POST /api/v1/auth/login`，由 `auth.Claims.Role` 限制 admin/ops/finance 才能访问 `/api/v1/admin/*`。
 - `internal/pkg/audit`: 新增审计中间件（Record/Writer/ClaimsExtractor + GORM 实现），自动落 `admin_audit_logs` 表。POST/PUT/DELETE/PATCH 异步写入（4 KB payload 截断），GET/4xx/5xx 跳过。`cmd/admin` 通过 path-prefix 过滤只对 `/api/v1/admin/*` 生效。

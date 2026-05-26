@@ -1,0 +1,45 @@
+# syntax=docker/dockerfile:1.7
+# Dedicated multi-stage build for the end-user web portal: stage 1 builds
+# the React SPA, stage 2 stages it into cmd/user-web/dist for go:embed,
+# stage 3 compiles the Go binary, final stage runs on distroless.
+#
+#   docker build -f deploy/Dockerfile.user-web -t proxy-vpn/user-web .
+
+# ---- 1. Frontend ----------------------------------------------------------
+FROM node:20-alpine AS web
+WORKDIR /web
+COPY web/user/package.json web/user/package-lock.json* ./
+RUN npm install --no-fund --no-audit
+COPY web/user/ ./
+RUN npm run build
+
+# ---- 2. Go build ----------------------------------------------------------
+FROM golang:1.25-alpine AS builder
+WORKDIR /src
+RUN apk add --no-cache git ca-certificates
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN rm -rf cmd/user-web/dist && mkdir -p cmd/user-web/dist
+COPY --from=web /web/dist/ cmd/user-web/dist/
+
+ARG VERSION=dev
+ARG COMMIT=none
+ARG DATE=unknown
+ENV CGO_ENABLED=0 GOFLAGS=-trimpath
+
+RUN go build \
+      -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" \
+      -o /out/user-web ./cmd/user-web
+
+# ---- 3. Runtime -----------------------------------------------------------
+FROM gcr.io/distroless/static-debian12:nonroot
+WORKDIR /app
+COPY --from=builder /out/user-web /app/user-web
+COPY --from=builder /src/config.example.yaml /app/config.yaml
+
+USER nonroot:nonroot
+EXPOSE 8082
+ENTRYPOINT ["/app/user-web"]
