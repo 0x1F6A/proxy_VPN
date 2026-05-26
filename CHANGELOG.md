@@ -176,3 +176,15 @@ Note: `/healthz`, `/readyz`, `/metrics` endpoints and MySQL/Redis readiness chec
 - `deploy/Dockerfile`: Go 1.24 → 1.25; added `BIN` build-arg so the same Dockerfile produces api / worker / node-agent / usdt-watcher / admin images.
 
 Verified: `helm lint` + `helm template` clean; `docker compose -f deploy/docker-compose.yml config` valid.
+
+## [Unreleased] - CI/CD: GitHub Actions release pipeline
+
+### Added
+- `.github/workflows/release.yml`: tag-triggered (v*.*.*) pipeline
+  - matrix-builds & pushes one multi-arch (amd64+arm64) image per cmd/ entrypoint to GHCR
+  - packages the Helm chart with the tag's semver, uploads as GH release asset, and pushes as OCI artifact to `ghcr.io/<owner>/charts`
+  - GHA cache scoped per binary
+- `helm-lint` job added to `ci.yml` so chart regressions are caught on PR
+
+### Changed
+- `ci.yml`: bumped setup-go to `1.25` to match the repo's go.mod; dropped the version-pinned `golangci-lint` step (the pin lagged behind Go 1.25 support).
