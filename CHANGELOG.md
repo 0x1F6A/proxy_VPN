@@ -6,6 +6,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Phase 15-A: 风控反滥用
+- `internal/pkg/geoip`：封装离线 GeoLite2 mmdb；找不到文件时降级为 `NoopLookup`，业务路径零阻断。
+- `internal/risk`：全新 bounded context。`service.Service` 暴露 `PreLogin` / `RegisterLoginFailure` / `RegisterLoginSuccess` / `RotateSubscriptionToken` / `SubGuard` / `ListDevices` / `RevokeDevice`，所有 deps 可 nil 降级；`Fingerprint = sha256(ua + accept-language + ip/24)` 让同 NAT 反复登录不算新设备；失败计数与锁定走 Redis 两个 key (`risk:fail:*` / `risk:lock:*`)，达到 `LoginLockThreshold` 后锁 `LoginLockDuration`；订阅 IP 治理用 ZSET 滚动窗口，超 `SubRevokeThreshold` 自动 rotate token + 邮件告警。
+- `internal/risk/infra`：gormrepo（device upsert + user lookup over `users` 表）+ rediskv（lockout / sub-IP）+ smtp mailer（subject 走 i18n bundle）。
+- `internal/risk/transport/httpapi`：admin `GET /api/v1/admin/users/:id/devices` / `DELETE /api/v1/admin/users/:id/devices/:fp` / `POST /api/v1/admin/users/:id/subscribe-token/rotate`；user 自助 `POST /api/v1/user/subscribe-token/rotate`。
+- `internal/user/service`: `Login` 签名追加可选 `acceptLang`；新增 `PreLogin/RegisterLoginFailure/RegisterLoginSuccess` 三个注入点；`Service.SetRisk` 允许 cmd 后置注入 risk 钩子。
+- `internal/migrations/000007_risk`：`login_devices`（user_id + fp_hash + first/last_seen + ip + ua + country）+ `users.subscribe_token_rotated_at` + `users.last_login_country` + `orders.requires_manual_review` + `orders.risk_score`。
+- `internal/pkg/config`: `RiskConfig{Enabled,LoginLockThreshold,LoginLockDuration,SubMaxIPs,SubRevokeThreshold,SubWindow,GeoIPDBPath}` + 默认值。
+- `cmd/api` / `cmd/admin`: 启用 Risk 时构造完整依赖图，挂 risk 路由，并把 risk 注入 user service 让 Login 走风控。
+- 测试：`internal/risk/service` 9 case + `internal/pkg/geoip` 3 case + `internal/pkg/i18n` 4 case 全绿。
+
+### Added — Phase 15-C: 国际化 + 工单系统
+- `internal/pkg/i18n`：自实现轻量 bundle，`embed messages/{en,zh-CN,zh-TW,ja}.toml`；`MatchLocale(Accept-Language)` 先全等再 lang 前缀回退；gin `Middleware` 把命中的 locale 写入 ctx。
+- `internal/pkg/i18n/messages/*.toml`：4 国语言基础消息（`err.*` / `email.*` / `ticket.*`）。
+- `internal/ticket`：全新 bounded context（domain/ports/service/infra-gormrepo/transport-httpapi）。状态机 `open → pending → resolved → closed`，admin 回复→pending、用户对 resolved 回复→重开 open。
+- `internal/ticket/transport/httpapi`：用户 `POST/GET /api/v1/tickets` + `GET /api/v1/tickets/:id` + `POST /:id/messages` + `POST /:id/close`；admin `GET /api/v1/admin/tickets`（status/priority/assignee/keyword 过滤+分页）+ `POST /:id/assign` + `POST /:id/reply` + `PATCH /:id`。
+- `internal/migrations/000008_tickets`：`tickets`（含 assignee_id + priority + status idx）+ `ticket_messages`（attachments JSON）+ `users.locale VARCHAR(16)`。
+- `internal/pkg/config`: `I18nConfig{DefaultLocale,SupportedLocales}` + 默认值。
+- `cmd/api` / `cmd/admin`: router 级挂 i18n middleware；构造 ticket service + 路由。
+
 ### Added — Phase 14-B: 客户端 SDK + 参考 CLI
 - `sdk/go/proxyvpn/`：独立 Go module（`github.com/0x1F6A/proxy_VPN/sdk/go`），零非 stdlib 依赖。类型化 client 覆盖 auth / user / billing / payment / subscription / nodes 全部公开端点；统一响应壳解析（`{code,message,data,request_id}`）；401 自动用 refresh_token 换新并重放一次，并发触发时通过 `tokenVersion` double-check 只发一次刷新；错误码常量支持 `errors.Is(err, proxyvpn.ErrInsufficientBalance)`。
 - `sdk/cli/proxyvpnctl/`：独立 module + cobra CLI 参考实现。子命令：`login` / `logout` / `me` / `plans` / `buy` / `pay --watch` / `orders` / `sub` / `nodes`。凭据持久化到 `~/.proxyvpn/credentials.json`（0600），通过 `PROXYVPN_BASE_URL` / `PROXYVPN_CRED_FILE` 环境变量配置。

@@ -1,0 +1,25 @@
+[err]
+"4000" = "請求參數錯誤"
+"4001" = "憑證無效"
+"4003" = "無權限"
+"4004" = "資源不存在"
+"4009" = "資源衝突"
+"4029" = "請求過於頻繁"
+"5000" = "伺服器內部錯誤"
+"login_locked" = "登入失敗次數過多，帳號已暫時鎖定"
+"sub_token_revoked" = "訂閱連結已被撤銷"
+"ticket_not_found" = "工單不存在"
+"ticket_forbidden" = "無權存取該工單"
+"ticket_closed" = "工單已關閉"
+
+[email]
+"register_subject" = "歡迎使用 proxy_VPN"
+"login_code_subject" = "您的登入驗證碼"
+"risk_alert_subject" = "偵測到異常登入"
+"ticket_reply_subject" = "[工單 #%s] 收到新回覆"
+
+[ticket]
+"status_open" = "待處理"
+"status_pending" = "等待回覆"
+"status_resolved" = "已解決"
+"status_closed" = "已關閉"

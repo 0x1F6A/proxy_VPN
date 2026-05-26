@@ -1,0 +1,25 @@
+[err]
+"4000" = "リクエストパラメータが不正です"
+"4001" = "認証情報が無効です"
+"4003" = "権限がありません"
+"4004" = "リソースが見つかりません"
+"4009" = "競合が発生しました"
+"4029" = "リクエストが多すぎます"
+"5000" = "サーバ内部エラー"
+"login_locked" = "ログイン失敗回数が上限に達しました。アカウントは一時的にロックされています"
+"sub_token_revoked" = "サブスクリプショントークンは失効しました"
+"ticket_not_found" = "チケットが見つかりません"
+"ticket_forbidden" = "このチケットへのアクセス権がありません"
+"ticket_closed" = "チケットはクローズされています"
+
+[email]
+"register_subject" = "proxy_VPN へようこそ"
+"login_code_subject" = "ログイン認証コード"
+"risk_alert_subject" = "異常なログインを検出しました"
+"ticket_reply_subject" = "[チケット #%s] 新しい返信"
+
+[ticket]
+"status_open" = "未対応"
+"status_pending" = "返信待ち"
+"status_resolved" = "解決済み"
+"status_closed" = "クローズ"

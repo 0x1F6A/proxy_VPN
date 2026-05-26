@@ -47,13 +47,23 @@ import (
 	"github.com/0x1F6A/proxy_VPN/internal/pkg/audit"
 	"github.com/0x1F6A/proxy_VPN/internal/pkg/auth"
 	"github.com/0x1F6A/proxy_VPN/internal/pkg/config"
+	"github.com/0x1F6A/proxy_VPN/internal/pkg/geoip"
 	"github.com/0x1F6A/proxy_VPN/internal/pkg/httpx"
+	"github.com/0x1F6A/proxy_VPN/internal/pkg/i18n"
 	"github.com/0x1F6A/proxy_VPN/internal/pkg/logger"
 	"github.com/0x1F6A/proxy_VPN/internal/pkg/storage"
 	reportrepo "github.com/0x1F6A/proxy_VPN/internal/report/infra/gormrepo"
+	riskgormrepo "github.com/0x1F6A/proxy_VPN/internal/risk/infra/gormrepo"
+	riskmailer "github.com/0x1F6A/proxy_VPN/internal/risk/infra/mailer"
+	riskredis "github.com/0x1F6A/proxy_VPN/internal/risk/infra/rediskv"
+	risksvc "github.com/0x1F6A/proxy_VPN/internal/risk/service"
+	riskhttp "github.com/0x1F6A/proxy_VPN/internal/risk/transport/httpapi"
 	slagormrepo "github.com/0x1F6A/proxy_VPN/internal/sla/infra/gormrepo"
 	slasvc "github.com/0x1F6A/proxy_VPN/internal/sla/service"
 	slahttp "github.com/0x1F6A/proxy_VPN/internal/sla/transport/httpapi"
+	ticketgormrepo "github.com/0x1F6A/proxy_VPN/internal/ticket/infra/gormrepo"
+	ticketsvc "github.com/0x1F6A/proxy_VPN/internal/ticket/service"
+	tickethttp "github.com/0x1F6A/proxy_VPN/internal/ticket/transport/httpapi"
 	reportsvc "github.com/0x1F6A/proxy_VPN/internal/report/service"
 	reporthttp "github.com/0x1F6A/proxy_VPN/internal/report/transport/httpapi"
 	"github.com/0x1F6A/proxy_VPN/internal/user/infra/gormrepo"
@@ -204,7 +214,8 @@ func mountAdminAPI(r *gin.Engine, cfg *config.Config, db *storage.MySQL, rdb *st
 		Cfg:       cfg,
 	}
 	var _ ports.UserRepo = deps.Users
-	userHandler := httpapi.New(service.New(deps), jwtSigner, blacklist)
+	usvc := service.New(deps)
+	userHandler := httpapi.New(usvc, jwtSigner, blacklist)
 	if cfg.OIDC.Enabled && cfg.OIDC.Issuer != "" && cfg.OIDC.ClientID != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -288,6 +299,62 @@ func mountAdminAPI(r *gin.Engine, cfg *config.Config, db *storage.MySQL, rdb *st
 		},
 	)
 	slaH.Register(v1)
+
+	// i18n + risk + ticket (Phase 15-A / 15-C).
+	bundle, err := i18n.New(cfg.I18n.DefaultLocale, cfg.I18n.SupportedLocales)
+	if err != nil {
+		log.Fatalf("i18n init: %v", err)
+	}
+	r.Use(i18n.Middleware(bundle))
+	if cfg.Risk.Enabled {
+		geo, gerr := geoip.New(cfg.Risk.GeoIPDBPath)
+		if gerr != nil {
+			slog.Warn("geoip disabled", "err", gerr.Error())
+		}
+		riskService := risksvc.New(risksvc.Deps{
+			Cfg:     cfg.Risk,
+			Devices: riskgormrepo.NewDeviceRepo(db.DB),
+			GeoIP:   geo,
+			Lockout: riskredis.NewLockoutStore(rdb.Client),
+			SubIPs:  riskredis.NewSubIPTracker(rdb.Client),
+			Mailer:  riskmailer.New(cfg.SMTP, bundle),
+			Users:   riskgormrepo.NewUserLookup(db.DB),
+		})
+		deps.Risk = riskService
+		usvc.SetRisk(riskService)
+		riskH := riskhttp.New(riskService, userHandler.AuthRequired(),
+			func(c *gin.Context) string {
+				if cl := httpapi.ClaimsFrom(c); cl != nil {
+					return cl.Role
+				}
+				return ""
+			},
+			func(c *gin.Context) uint64 {
+				if cl := httpapi.ClaimsFrom(c); cl != nil {
+					return cl.UID
+				}
+				return 0
+			},
+		)
+		riskH.RegisterAdmin(v1)
+		riskH.RegisterUser(v1)
+	}
+	ticketSvc := ticketsvc.New(ticketsvc.Deps{Repo: ticketgormrepo.New(db.DB)})
+	ticketH := tickethttp.New(ticketSvc, userHandler.AuthRequired(),
+		func(c *gin.Context) string {
+			if cl := httpapi.ClaimsFrom(c); cl != nil {
+				return cl.Role
+			}
+			return ""
+		},
+		func(c *gin.Context) uint64 {
+			if cl := httpapi.ClaimsFrom(c); cl != nil {
+				return cl.UID
+			}
+			return 0
+		},
+	)
+	ticketH.Register(v1)
 }
 
 // buildPaymentProviders mirrors cmd/api's helper. We need it for the

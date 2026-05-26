@@ -1,0 +1,29 @@
+# Phase 15-C 默认翻译表（en）。键命名约定：
+#   err.<error_code>     - 业务错误码对应消息
+#   email.<template>     - 邮件标题/正文
+#   ticket.<key>         - 工单通用术语
+[err]
+"4000" = "bad request"
+"4001" = "invalid credentials"
+"4003" = "forbidden"
+"4004" = "not found"
+"4009" = "conflict"
+"4029" = "too many requests"
+"5000" = "internal error"
+"login_locked" = "account temporarily locked due to too many failed attempts"
+"sub_token_revoked" = "subscription token revoked"
+"ticket_not_found" = "ticket not found"
+"ticket_forbidden" = "you do not own this ticket"
+"ticket_closed" = "ticket is closed"
+
+[email]
+"register_subject" = "Welcome to proxy_VPN"
+"login_code_subject" = "Your login verification code"
+"risk_alert_subject" = "Unusual login detected"
+"ticket_reply_subject" = "[Ticket #%s] New reply"
+
+[ticket]
+"status_open" = "Open"
+"status_pending" = "Pending"
+"status_resolved" = "Resolved"
+"status_closed" = "Closed"

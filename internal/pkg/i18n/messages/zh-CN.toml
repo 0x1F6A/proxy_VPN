@@ -1,0 +1,25 @@
+[err]
+"4000" = "请求参数错误"
+"4001" = "凭证无效"
+"4003" = "无权限"
+"4004" = "资源不存在"
+"4009" = "资源冲突"
+"4029" = "请求过于频繁"
+"5000" = "服务内部错误"
+"login_locked" = "登录失败次数过多，账号已临时锁定"
+"sub_token_revoked" = "订阅链接已被吊销"
+"ticket_not_found" = "工单不存在"
+"ticket_forbidden" = "无权访问该工单"
+"ticket_closed" = "工单已关闭"
+
+[email]
+"register_subject" = "欢迎使用 proxy_VPN"
+"login_code_subject" = "您的登录验证码"
+"risk_alert_subject" = "检测到异常登录"
+"ticket_reply_subject" = "[工单 #%s] 收到新回复"
+
+[ticket]
+"status_open" = "待处理"
+"status_pending" = "等待回复"
+"status_resolved" = "已解决"
+"status_closed" = "已关闭"

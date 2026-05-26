@@ -13,7 +13,9 @@ import (
 
 	"github.com/0x1F6A/proxy_VPN/internal/pkg/auth"
 	"github.com/0x1F6A/proxy_VPN/internal/pkg/config"
+	"github.com/0x1F6A/proxy_VPN/internal/pkg/geoip"
 	"github.com/0x1F6A/proxy_VPN/internal/pkg/httpx"
+	"github.com/0x1F6A/proxy_VPN/internal/pkg/i18n"
 	"github.com/0x1F6A/proxy_VPN/internal/pkg/logger"
 	"github.com/0x1F6A/proxy_VPN/internal/pkg/storage"
 	billingrepo "github.com/0x1F6A/proxy_VPN/internal/billing/infra/gormrepo"
@@ -46,6 +48,14 @@ import (
 	"github.com/0x1F6A/proxy_VPN/internal/user/ports"
 	"github.com/0x1F6A/proxy_VPN/internal/user/service"
 	"github.com/0x1F6A/proxy_VPN/internal/user/transport/httpapi"
+	riskgormrepo "github.com/0x1F6A/proxy_VPN/internal/risk/infra/gormrepo"
+	riskmailer "github.com/0x1F6A/proxy_VPN/internal/risk/infra/mailer"
+	riskredis "github.com/0x1F6A/proxy_VPN/internal/risk/infra/rediskv"
+	risksvc "github.com/0x1F6A/proxy_VPN/internal/risk/service"
+	riskhttp "github.com/0x1F6A/proxy_VPN/internal/risk/transport/httpapi"
+	tickethttp "github.com/0x1F6A/proxy_VPN/internal/ticket/transport/httpapi"
+	ticketgormrepo "github.com/0x1F6A/proxy_VPN/internal/ticket/infra/gormrepo"
+	ticketsvc "github.com/0x1F6A/proxy_VPN/internal/ticket/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -143,6 +153,33 @@ jwtSigner := auth.NewJWT(cfg.JWT.Secret, cfg.JWT.AccessTTL, cfg.JWT.Issuer, cfg.
 blacklist := rediskv.NewBlacklist(rdb.Client)
 limiter := rediskv.NewLimiter(rdb.Client)
 
+// i18n bundle — Accept-Language middleware is mounted globally so handlers
+// can render localized error messages.
+bundle, err := i18n.New(cfg.I18n.DefaultLocale, cfg.I18n.SupportedLocales)
+if err != nil {
+	log.Fatalf("i18n init: %v", err)
+}
+r.Use(i18n.Middleware(bundle))
+
+// Risk control (Phase 15-A). All deps optional: when geoip mmdb missing /
+// risk disabled the service degrades to no-op.
+var riskService *risksvc.Service
+if cfg.Risk.Enabled {
+	geo, gerr := geoip.New(cfg.Risk.GeoIPDBPath)
+	if gerr != nil {
+		log.Printf("warn: geoip db unavailable (%v); falling back to noop", gerr)
+	}
+	riskService = risksvc.New(risksvc.Deps{
+		Cfg:     cfg.Risk,
+		Devices: riskgormrepo.NewDeviceRepo(db.DB),
+		GeoIP:   geo,
+		Lockout: riskredis.NewLockoutStore(rdb.Client),
+		SubIPs:  riskredis.NewSubIPTracker(rdb.Client),
+		Mailer:  riskmailer.New(cfg.SMTP, bundle),
+		Users:   riskgormrepo.NewUserLookup(db.DB),
+	})
+}
+
 userRepo := gormrepo.NewUserRepo(db.DB)
 deps := service.Deps{
 Users:     userRepo,
@@ -156,10 +193,49 @@ Admin:     gormrepo.NewAdminUserRepo(db.DB),
 JWT:       jwtSigner,
 Cfg:       cfg,
 }
+if riskService != nil {
+	deps.Risk = riskService
+}
 var _ ports.UserRepo = deps.Users
 userHandler := httpapi.New(service.New(deps), jwtSigner, blacklist)
 v1 := r.Group("/api/v1")
 userHandler.Register(v1)
+
+if riskService != nil {
+	roleOf := func(c *gin.Context) string {
+		if cl := httpapi.ClaimsFrom(c); cl != nil {
+			return cl.Role
+		}
+		return ""
+	}
+	uidOf := func(c *gin.Context) uint64 {
+		if cl := httpapi.ClaimsFrom(c); cl != nil {
+			return cl.UID
+		}
+		return 0
+	}
+	riskH := riskhttp.New(riskService, userHandler.AuthRequired(), roleOf, uidOf)
+	riskH.RegisterAdmin(v1)
+	riskH.RegisterUser(v1)
+}
+
+// Ticket bounded context (Phase 15-C).
+ticketSvc := ticketsvc.New(ticketsvc.Deps{Repo: ticketgormrepo.New(db.DB)})
+ticketH := tickethttp.New(ticketSvc, userHandler.AuthRequired(),
+	func(c *gin.Context) string {
+		if cl := httpapi.ClaimsFrom(c); cl != nil {
+			return cl.Role
+		}
+		return ""
+	},
+	func(c *gin.Context) uint64 {
+		if cl := httpapi.ClaimsFrom(c); cl != nil {
+			return cl.UID
+		}
+		return 0
+	},
+)
+ticketH.Register(v1)
 
 // billing bounded context shares the same auth middleware + claims extractor.
 billingSvc := billingsvc.New(billingsvc.Deps{
