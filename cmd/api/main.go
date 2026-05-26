@@ -56,6 +56,11 @@ var (
 	date    = "unknown"
 )
 
+// newMailer is the factory used by mountUserAPI to build the outbound mail
+// transport. Tests (see e2e_test.go) swap it for a fake to capture verification
+// codes without going through SMTP.
+var newMailer = func(cfg config.SMTPConfig) ports.Mailer { return smtpmail.New(cfg) }
+
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
@@ -141,7 +146,7 @@ Users:     userRepo,
 Refresh:   gormrepo.NewRefreshRepo(db.DB),
 Codes:     gormrepo.NewEmailCodeRepo(db.DB),
 Logs:      gormrepo.NewLoginLogRepo(db.DB),
-Mailer:    smtpmail.New(cfg.SMTP),
+Mailer:    newMailer(cfg.SMTP),
 Blacklist: blacklist,
 Rate:      limiter,
 Admin:     gormrepo.NewAdminUserRepo(db.DB),

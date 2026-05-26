@@ -56,6 +56,10 @@ cover: ## Run tests with coverage report
 test-integration: ## Run integration tests (requires Docker; spins up MySQL+Redis containers)
 	$(GO) test -tags=integration -count=1 -timeout=10m ./...
 
+.PHONY: test-e2e
+test-e2e: ## Run e2e API tests (requires Docker; spins up MySQL+Redis + boots full API in-process)
+	$(GO) test -tags="integration e2e" -count=1 -timeout=10m ./cmd/api/...
+
 .PHONY: vet
 vet: ## go vet
 	$(GO) vet ./...

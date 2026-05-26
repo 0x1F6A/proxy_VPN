@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `cmd/api/e2e_test.go` (`//go:build e2e`): end-to-end HTTP test that boots the full user API in-process against testcontainers MySQL+Redis and walks the complete buyer journey — `POST /auth/email/send-code` → `POST /auth/email/register` → `POST /auth/login` → `GET /user/me` → `GET /api/v1/plans` → `POST /api/v1/orders` (plan / mock) → `POST /api/v1/orders/:no/mock-pay` → `GET /sub/:token`. A `fakeMailer` is injected via the new `newMailer` factory hook in `cmd/api/main.go` to capture verification codes without touching SMTP. Wired into the nightly `integration.yml` workflow as a second job step (`go test -tags="integration e2e" ./cmd/api/...`) and exposed locally via `make test-e2e`.
+- `cmd/api/main.go`: `newMailer` package-level factory variable so tests can swap the `ports.Mailer` implementation without rebuilding the binary.
 - `.github/workflows/integration.yml`: nightly (03:00 UTC) + manual-dispatch workflow that runs the `//go:build integration` suite against real MySQL/Redis/ClickHouse containers on the runner's Docker daemon. Keeps the standard CI fast while still exercising the testcontainer paths regularly.
 - `internal/pkg/testsupport`: helpers (`StartMySQL`, `StartRedis`) that spin up disposable MySQL/Redis containers via testcontainers-go for integration tests. Migrations are loaded automatically.
 - Integration tests (`//go:build integration` tag) for `traffic/infra/gormrepo` (QuotaRepo + UsageFallbackSink), `traffic/infra/redisban` (BanCache), `user/infra/gormrepo` (UserRepo + RefreshRepo), and `traffic/infra/chsink` end-to-end against a real ClickHouse container (Bootstrap idempotency + Write + materialised-view rollup readback).
