@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Phase 3 (套餐、流量包、订单与 Mock 支付)
+- 六边形分层 `internal/billing/{domain,ports,service,infra/gormrepo,transport/httpapi}`。
+- 套餐 / 流量包目录：公开浏览 `GET /api/v1/plans|/data-packs`，管理员 CRUD `POST|PUT|DELETE /api/v1/admin/plans|/admin/data-packs`。
+- 优惠券预估 `POST /api/v1/coupons/quote`：支持 fixed / percent 折扣、scope（plan|pack|all）、最低金额、总配额与人均次数。
+- 订单全生命周期：创建（含 `Idempotency-Key` 幂等）、查询（单笔 / 我的列表）、取消、Mock 支付 `POST /api/v1/orders/:no/mock-pay`。
+- 支付成功后通过 `UserBillingPort`（user 模块实现）将套餐 / 流量包 / 充值原子应用到用户：plan_id / plan_expire_at / traffic_total / balance_cny。
+- 后台 worker `RunAutoCancelLoop`：每分钟将超过 15 分钟未支付的订单批量置为 expired。
+- 金额一律使用 `big.Rat` 处理（避免浮点漂移），CNY 以字符串形式贯穿 API 与持久层 `DECIMAL(12,2)`。
+- 管理员路由通过 `RequireRole("admin")` 中间件保护，复用 user 模块的 JWT AuthRequired。
+- 单测：QuoteCoupon（fixed / percent / 配额耗尽 / 最低金额未达）、CreateOrder 并发幂等、MockPay 触发 ApplyPlan、AutoCancel worker。
+
 ### Added — Phase 2 (用户体系)
 - 六边形分层 `internal/user/{domain,ports,service,infra/{gormrepo,rediskv,smtpmail},transport/httpapi}`。
 - `internal/pkg/auth`：bcrypt 密码哈希、HS256 JWT 签发/解析、TOTP（pquerna/otp）、SHA256/RandomToken 工具。

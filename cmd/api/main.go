@@ -16,6 +16,9 @@ import (
 	"github.com/0x1F6A/proxy_VPN/internal/pkg/httpx"
 	"github.com/0x1F6A/proxy_VPN/internal/pkg/logger"
 	"github.com/0x1F6A/proxy_VPN/internal/pkg/storage"
+	billingrepo "github.com/0x1F6A/proxy_VPN/internal/billing/infra/gormrepo"
+	billingsvc "github.com/0x1F6A/proxy_VPN/internal/billing/service"
+	billinghttp "github.com/0x1F6A/proxy_VPN/internal/billing/transport/httpapi"
 	"github.com/0x1F6A/proxy_VPN/internal/user/infra/gormrepo"
 	"github.com/0x1F6A/proxy_VPN/internal/user/infra/rediskv"
 	"github.com/0x1F6A/proxy_VPN/internal/user/infra/smtpmail"
@@ -111,8 +114,9 @@ jwtSigner := auth.NewJWT(cfg.JWT.Secret, cfg.JWT.AccessTTL, cfg.JWT.Issuer, cfg.
 blacklist := rediskv.NewBlacklist(rdb.Client)
 limiter := rediskv.NewLimiter(rdb.Client)
 
+userRepo := gormrepo.NewUserRepo(db.DB)
 deps := service.Deps{
-Users:     gormrepo.NewUserRepo(db.DB),
+Users:     userRepo,
 Refresh:   gormrepo.NewRefreshRepo(db.DB),
 Codes:     gormrepo.NewEmailCodeRepo(db.DB),
 Logs:      gormrepo.NewLoginLogRepo(db.DB),
@@ -123,7 +127,25 @@ JWT:       jwtSigner,
 Cfg:       cfg,
 }
 var _ ports.UserRepo = deps.Users
-h := httpapi.New(service.New(deps), jwtSigner, blacklist)
+userHandler := httpapi.New(service.New(deps), jwtSigner, blacklist)
 v1 := r.Group("/api/v1")
-h.Register(v1)
+userHandler.Register(v1)
+
+// billing bounded context shares the same auth middleware + claims extractor.
+billingSvc := billingsvc.New(billingsvc.Deps{
+Plans:     billingrepo.NewPlanRepo(db.DB),
+Packs:     billingrepo.NewDataPackRepo(db.DB),
+Coupons:   billingrepo.NewCouponRepo(db.DB),
+Orders:    billingrepo.NewOrderRepo(db.DB),
+UserApply: gormrepo.NewBillingApplyRepo(db.DB),
+})
+billingH := billinghttp.New(billingSvc, userHandler.AuthRequired(), httpapi.ClaimsFrom)
+billingH.Register(v1)
+
+// background workers
+go billingSvc.RunAutoCancelLoop(context.Background(), time.Minute, func(msg string, kv ...any) {
+// best-effort, no logger captured here to keep this helper standalone
+_ = msg
+_ = kv
+})
 }
