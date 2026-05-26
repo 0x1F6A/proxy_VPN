@@ -1,0 +1,29 @@
+app:
+  name: proxy_VPN
+  env: dev
+
+http:
+  addr: ":8080"
+
+log:
+  level: info
+  format: json
+
+mysql:
+  dsn: "root:root@tcp(127.0.0.1:3306)/proxy_vpn?charset=utf8mb4&parseTime=true&loc=UTC"
+  max_open_conns: 50
+  max_idle_conns: 10
+  conn_max_lifetime: 1h
+
+redis:
+  addr: "127.0.0.1:6379"
+  password: ""
+  db: 0
+
+jwt:
+  # Phase 0 placeholder — overridden by PROXYVPN_JWT__SECRET in real envs.
+  secret: "change-me-in-production-please"
+  access_ttl: 2h
+  refresh_ttl: 168h
+  issuer: "proxy_VPN"
+  allowed_clock_skew: 30s

@@ -1,0 +1,25 @@
+name: Feature request
+description: Suggest a new feature for proxy_VPN
+labels: [enhancement, triage]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem this feature solves
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: input
+    id: phase
+    attributes:
+      label: Target phase / module
+      placeholder: e.g. Phase 5 / node-svc

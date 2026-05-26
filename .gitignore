@@ -1,1 +1,22 @@
+# Build artifacts
+bin/
+.tools/
+coverage.out
+*.test
+*.out
+
+# OS / IDE
 .DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Env files
+.env
+.env.local
+config.yaml
+
+# Web build
+web/*/node_modules/
+web/*/.next/
+web/*/dist/
