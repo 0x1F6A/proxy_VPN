@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Phase 13: 节点出口 sing-box + 多协议混合节点
+- `internal/node/service/nodecfg/singbox.go`: 新增 `RenderSingBox`，与现有 `RenderXray` 并列，输出完整的 sing-box 1.8+ 服务端配置（log/dns/inbounds/outbounds + v2ray_api stats）。4 协议全覆盖（VLESS-Reality / Trojan / Hysteria2 / SS-2022），Version 哈希算法与 xray 渲染器一致，node-agent 可继续按 hash 跳过未变更的写盘与 reload。
+- `internal/node/domain/node.go`: `Node` 新增 `Engine`（`"xray"` | `"sing-box"`，默认 xray）与 `Inbounds`（`json.RawMessage`，可选 `[]NodeInbound`）字段；新增 `NodeInbound` 类型与 `AllInbounds()` / `EffectiveEngine()` / `IsValidEngine()` 辅助。一个节点现在可声明 N 个不同协议 / 不同端口的 inbound 共享同一台 VPS（多协议混合节点）。
+- `internal/node/service/nodecfg/render.go`: `RenderXray` 重写为遍历 `Node.AllInbounds()` 产出多个 inbound 段，单 inbound 节点表现与之前完全一致，确保向后兼容。
+- `internal/node/service/service.go`: `AgentConfig` 按 `Node.EffectiveEngine()` 分发到 `RenderSingBox` 或 `RenderXray`，节点全量可热切换引擎。
+- `internal/node/service/subgen/expand.go`: 新增内部 `expand()` 辅助，把多 inbound 节点在 v2ray / Clash / Sing-box 订阅产出中展开为 N 个虚拟节点条目，名称加 `[protocol]` 后缀防重；clash/singbox/v2ray 三个 generator 入口前都调用一次。
+- `internal/node/transport/httpapi/handler.go`: admin `POST /admin/nodes` 与 `PUT /admin/nodes/:id` 新增 `engine`、`inbounds` 字段透传；非法 engine 值返回 400。
+- `internal/migrations/000004_node_engine_inbounds.up.sql`: `ALTER TABLE nodes ADD engine VARCHAR(16) NOT NULL DEFAULT 'xray', ADD inbounds JSON NULL`。
+
 ### Added — Phase 12: User Web Portal
 - `cmd/user-web`: 独立的用户端 Web 二进制，默认监听 `:8082`。复用 `cmd/api` 的全部 bounded contexts（user/billing/payment/node/report），但不挂载 admin 审计中间件——专供普通用户走浏览器登录、买套餐、付款、拉订阅。
 - `web/user`: React 18 + TypeScript + Vite + Ant Design 5 + TanStack Query + Zustand + react-router 的用户面 SPA，9 个页面：登录 / 注册（带 60 秒验证码倒计时）/ 仪表盘（余额、流量、套餐到期、邀请码、快速入口）/ 套餐与流量包 / 订单（取消 / 去支付）/ 支付页（多渠道二维码 + USDT 地址金额 + mock-pay + 3s 轮询订单状态）/ 订阅（clash / sing-box / v2ray-base64 + 二维码 + Token 复制）/ 节点列表（30s 轮询）/ 邀请 / 账号（改密 + 2FA enroll/disable）/ 帮助（多平台客户端下载 + FAQ）。

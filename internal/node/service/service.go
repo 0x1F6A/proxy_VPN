@@ -141,8 +141,9 @@ func (s *Service) MarkStaleNow(ctx context.Context) (int64, error) {
 	return s.d.Nodes.MarkStale(ctx, cutoff)
 }
 
-// AgentConfig renders the server-side proxy config (xray) for the calling
-// node. Used by node-agent's reload loop.
+// AgentConfig renders the server-side proxy config for the calling node,
+// dispatching to the renderer matching Node.Engine. Used by node-agent's
+// reload loop.
 func (s *Service) AgentConfig(ctx context.Context, nodeToken string) (nodecfg.Rendered, error) {
 	n, err := s.d.Nodes.FindByTokenHash(ctx, sha256hex(nodeToken))
 	if err != nil || n == nil {
@@ -152,7 +153,12 @@ func (s *Service) AgentConfig(ctx context.Context, nodeToken string) (nodecfg.Re
 	if err != nil {
 		return nodecfg.Rendered{}, err
 	}
-	return nodecfg.RenderXray(*n, subs)
+	switch n.EffectiveEngine() {
+	case domain.EngineSingBox:
+		return nodecfg.RenderSingBox(*n, subs)
+	default:
+		return nodecfg.RenderXray(*n, subs)
+	}
 }
 
 // RunStaleMarker periodically marks nodes offline if their last_heartbeat_at

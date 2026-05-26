@@ -39,6 +39,8 @@ type nodeRow struct {
 	OnlineUsers     uint32  `gorm:"column:online_users"`
 	Sort            int
 	Status          int8
+	Engine          string          `gorm:"size:16;default:xray"`
+	Inbounds        json.RawMessage `gorm:"column:inbounds;type:json"`
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 }
@@ -58,6 +60,7 @@ func toNode(r *nodeRow) *domain.Node {
 		CPUPercent: r.CPUPercent, MemPercent: r.MemPercent,
 		BandwidthInBps: r.BandwidthInBps, BandwidthOutBps: r.BandwidthOutBps,
 		OnlineUsers: r.OnlineUsers, Sort: r.Sort, Status: r.Status,
+		Engine: r.Engine, Inbounds: r.Inbounds,
 		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}
 }
@@ -69,6 +72,7 @@ func fromNode(n *domain.Node) *nodeRow {
 		TLSConfig: n.TLSConfig, Transport: n.Transport, TransportConfig: n.TransportConfig,
 		RateMultiplier: n.RateMultiplier, NodeTokenHash: n.NodeTokenHash,
 		Sort: n.Sort, Status: n.Status,
+		Engine: n.Engine, Inbounds: n.Inbounds,
 	}
 }
 

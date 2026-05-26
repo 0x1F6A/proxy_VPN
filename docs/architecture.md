@@ -233,13 +233,20 @@ usdt-watcher (独立进程):
 - `/var/lib/proxy-vpn/state.db`：BoltDB，存断线期间缓冲数据
 - `/etc/xray/config.json`：Xray 配置（agent 渲染）
 
-### 7.4 Xray 配置策略
+### 7.4 节点出口配置（Engine 路由 + 多协议混合）
+- **Engine 字段**：`Node.engine` 枚举 `xray` | `sing-box`，默认 `xray`。控制面按节点级动态选择渲染器（`nodecfg.RenderXray` 或 `RenderSingBox`），node-agent 不感知引擎差异——只负责落盘 + 执行 `reloadCmd`。
+- **多 inbound 混合**：`Node.inbounds` 字段（JSON 数组）允许一台 VPS 同时暴露多个协议/端口。`Node.AllInbounds()` 把主字段当作第 0 个 inbound，再追加 `inbounds` 中的额外条目，全部映射到同一份用户列表。客户端订阅产出中会按 `name [protocol]` 后缀展开为 N 个虚拟节点条目。
+- **Xray inbound 协议**：VLESS+Reality+Vision（首选）、Hysteria2、Trojan、SS-2022
+- **Sing-box inbound 协议**：VLESS+Reality、Trojan、Hysteria2、SS-2022（`2022-blake3-aes-128-gcm`）
+- **Stats**：xray 启用 `stats` API；sing-box 启用 `experimental.v2ray_api.stats.users[]`，agent 用同一份 traffic 拉取协议批量上报
+
+### 7.5 Xray 配置策略
 - 协议：VLESS + Reality + Vision（首选）、Hysteria2、Trojan
 - 入站监听端口分组（443 主、备用端口）
 - `stats` API 开启 → agent 拉用户流量
 - 路由：地理分流（中国直连/国外代理）、广告拦截可选
 
-### 7.5 节点故障转移
+### 7.6 节点故障转移
 - 心跳 `> 90s` 未到 → `online=false`，自动从订阅剔除
 - Node-agent 内置自检：Xray 进程崩溃 → 5s 内拉起 + 告警
 - 节点完全离线 → 用户客户端自动按订阅切换其它节点

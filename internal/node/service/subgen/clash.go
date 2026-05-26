@@ -11,6 +11,7 @@ import (
 // Clash renders a minimal Clash Meta YAML containing the proxies + a
 // "PROXY" selector group. Returned as []byte (text/yaml).
 func Clash(views []NodeView) []byte {
+	views = expand(views)
 	var b strings.Builder
 	b.WriteString("# proxy_VPN subscription (clash-meta)\n")
 	b.WriteString("proxies:\n")

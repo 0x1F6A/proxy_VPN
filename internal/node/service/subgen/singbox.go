@@ -10,6 +10,7 @@ import (
 // can embed it under their own log / inbounds / dns section if needed; we
 // produce a valid standalone document for v1.
 func SingBox(views []NodeView) []byte {
+	views = expand(views)
 	outs := []map[string]any{}
 	tags := []string{}
 	for _, v := range views {

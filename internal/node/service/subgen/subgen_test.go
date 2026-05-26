@@ -59,3 +59,38 @@ func TestSingBoxSubscription(t *testing.T) {
 		}
 	}
 }
+
+func TestMultiInboundExpansion(t *testing.T) {
+extra, _ := json.Marshal([]domain.NodeInbound{
+{Protocol: domain.ProtocolHysteria2, Port: 8443},
+})
+views := []subgen.NodeView{{UserUUID: "uuid-x", Node: domain.Node{
+Name: "MIX-1", Region: "JP", Protocol: domain.ProtocolVLESSReality,
+Address: "mix.example.com", Port: 443,
+TLSConfig: json.RawMessage(`{"sni":"example.com","pbk":"abc","sid":"01"}`),
+Transport: "tcp",
+Inbounds:  extra,
+}}}
+
+// V2Ray: should contain both vless:// and hysteria2://, and a [protocol]-suffixed name.
+enc := subgen.V2Ray(views)
+dec, _ := base64.StdEncoding.DecodeString(enc)
+if !strings.Contains(string(dec), "vless://") || !strings.Contains(string(dec), "hysteria2://") {
+t.Fatalf("v2ray missing protocols: %s", dec)
+}
+if !strings.Contains(string(dec), "MIX-1") || !strings.Contains(string(dec), "hysteria2") {
+t.Fatalf("v2ray missing suffixed name: %s", dec)
+}
+
+// Clash: both proxies emitted.
+yaml := string(subgen.Clash(views))
+if !strings.Contains(yaml, `"vless"`) || !strings.Contains(yaml, `"hysteria2"`) {
+t.Fatalf("clash missing protocols: %s", yaml)
+}
+
+// Sing-box: both outbounds emitted.
+box := string(subgen.SingBox(views))
+if !strings.Contains(box, `"vless"`) || !strings.Contains(box, `"hysteria2"`) {
+t.Fatalf("singbox missing protocols: %s", box)
+}
+}

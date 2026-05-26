@@ -190,6 +190,30 @@ type createNodeReq struct {
 	RateMultiplier  string          `json:"rate_multiplier"`
 	Sort            int             `json:"sort"`
 	Status          int8            `json:"status"`
+	Engine          string          `json:"engine"`   // "xray" | "sing-box"; default xray
+	Inbounds        json.RawMessage `json:"inbounds"` // optional []NodeInbound
+}
+
+// applyToDomain populates a *domain.Node from req, defaulting Engine to xray
+// when empty and rejecting unknown engine values.
+func (r createNodeReq) applyToDomain(n *domain.Node) error {
+	engine := r.Engine
+	if engine == "" {
+		engine = domain.EngineXray
+	}
+	if !domain.IsValidEngine(engine) {
+		return errors.New("engine must be 'xray' or 'sing-box'")
+	}
+	n.Name, n.Region, n.Tags = r.Name, r.Region, r.Tags
+	n.NodeGroupID = r.NodeGroupID
+	n.Protocol = r.Protocol
+	n.Address, n.Port = r.Address, r.Port
+	n.TLSConfig, n.Transport, n.TransportConfig = r.TLSConfig, r.Transport, r.TransportConfig
+	n.RateMultiplier = r.RateMultiplier
+	n.Sort, n.Status = r.Sort, r.Status
+	n.Engine = engine
+	n.Inbounds = r.Inbounds
+	return nil
 }
 
 func (h *Handler) adminCreateNode(c *gin.Context) {
@@ -198,12 +222,10 @@ func (h *Handler) adminCreateNode(c *gin.Context) {
 		c.JSON(400, gin.H{"code": 4000, "message": err.Error()})
 		return
 	}
-	n := &domain.Node{
-		Name: req.Name, Region: req.Region, Tags: req.Tags,
-		NodeGroupID: req.NodeGroupID, Protocol: req.Protocol,
-		Address: req.Address, Port: req.Port,
-		TLSConfig: req.TLSConfig, Transport: req.Transport, TransportConfig: req.TransportConfig,
-		RateMultiplier: req.RateMultiplier, Sort: req.Sort, Status: req.Status,
+	n := &domain.Node{}
+	if err := req.applyToDomain(n); err != nil {
+		c.JSON(400, gin.H{"code": 4000, "message": err.Error()})
+		return
 	}
 	if n.Status == 0 {
 		n.Status = domain.NodeStatusEnabled
@@ -213,7 +235,6 @@ func (h *Handler) adminCreateNode(c *gin.Context) {
 		mapErr(c, err)
 		return
 	}
-	// One-shot reveal of bootstrap token.
 	c.JSON(200, gin.H{"code": 0, "data": gin.H{
 		"node":            n,
 		"bootstrap_token": token,
@@ -227,12 +248,10 @@ func (h *Handler) adminUpdateNode(c *gin.Context) {
 		c.JSON(400, gin.H{"code": 4000, "message": err.Error()})
 		return
 	}
-	n := &domain.Node{
-		ID: id, Name: req.Name, Region: req.Region, Tags: req.Tags,
-		NodeGroupID: req.NodeGroupID, Protocol: req.Protocol,
-		Address: req.Address, Port: req.Port,
-		TLSConfig: req.TLSConfig, Transport: req.Transport, TransportConfig: req.TransportConfig,
-		RateMultiplier: req.RateMultiplier, Sort: req.Sort, Status: req.Status,
+	n := &domain.Node{ID: id}
+	if err := req.applyToDomain(n); err != nil {
+		c.JSON(400, gin.H{"code": 4000, "message": err.Error()})
+		return
 	}
 	if err := h.svc.UpdateNode(c.Request.Context(), n); err != nil {
 		mapErr(c, err)

@@ -25,6 +25,7 @@ type NodeView struct {
 // V2Ray renders one base64-encoded blob of share links separated by newline,
 // which is what v2rayN / v2rayNG / Shadowrocket consume.
 func V2Ray(views []NodeView) string {
+	views = expand(views)
 	lines := make([]string, 0, len(views))
 	for _, v := range views {
 		if link := shareLink(v); link != "" {
