@@ -1,0 +1,91 @@
+# proxy_VPN production-ish stack.
+#
+# Builds api+worker from local source (uses deploy/Dockerfile with BIN arg),
+# starts MySQL 8 + Redis 7. Useful for staging / single-node prod. For real
+# prod use the helm chart (deploy/helm/proxy-vpn).
+#
+#   docker compose -f deploy/docker-compose.yml up -d --build
+#
+# Override config via env (PROXYVPN_* — viper double-underscore for nesting),
+# or mount a config.yaml over /app/config.yaml.
+
+name: proxy-vpn
+
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+00:00
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-changeme}
+      MYSQL_DATABASE: proxy_vpn
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-changeme}", "--silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        BIN: api
+        VERSION: ${VERSION:-dev}
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      PROXYVPN_DB__DSN: root:${MYSQL_ROOT_PASSWORD:-changeme}@tcp(mysql:3306)/proxy_vpn?parseTime=true&loc=UTC&charset=utf8mb4
+      PROXYVPN_REDIS__ADDR: redis:6379
+      PROXYVPN_HTTP__ADDR: ":8080"
+      PROXYVPN_JWT__SECRET: ${JWT_SECRET:-please-change-this-32-byte-secret-string}
+    ports:
+      - "${API_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "/app/app", "--help"] # liveness is process-level; HTTP probe in helm
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  worker:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        BIN: worker
+        VERSION: ${VERSION:-dev}
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      PROXYVPN_DB__DSN: root:${MYSQL_ROOT_PASSWORD:-changeme}@tcp(mysql:3306)/proxy_vpn?parseTime=true&loc=UTC&charset=utf8mb4
+      PROXYVPN_REDIS__ADDR: redis:6379
+
+volumes:
+  mysql-data:
+  redis-data:

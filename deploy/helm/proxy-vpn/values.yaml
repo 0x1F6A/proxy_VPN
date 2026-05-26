@@ -1,0 +1,94 @@
+# Default values for proxy-vpn.
+# Override with --set or -f values.prod.yaml.
+
+image:
+  registry: ghcr.io
+  repository: 0x1f6a/proxy-vpn
+  # tag defaults to .Chart.AppVersion; override to roll forwards/back
+  tag: ""
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+# Each component runs the same image with a different ENTRYPOINT-arg via BIN.
+# We bake one image per BIN at build time (see deploy/Dockerfile).
+api:
+  enabled: true
+  replicaCount: 2
+  imageOverride: ""        # e.g. "ghcr.io/0x1f6a/proxy-vpn-api:1.2.3"
+  service:
+    type: ClusterIP
+    port: 8080
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits:   { cpu: 1,    memory: 512Mi }
+  # bluegreen.colour is rendered as a pod label so a separate Service /
+  # Istio VirtualService can route by colour during canary releases.
+  bluegreen:
+    colour: blue   # blue | green
+
+worker:
+  enabled: true
+  replicaCount: 1
+  imageOverride: ""
+  resources:
+    requests: { cpu: 50m,  memory: 64Mi }
+    limits:   { cpu: 500m, memory: 256Mi }
+
+# node-agent is intended for the VPS edges (xray hosts) and is not normally
+# part of the central helm release. Left here for completeness when running
+# everything in one cluster.
+nodeAgent:
+  enabled: false
+  replicaCount: 0
+  imageOverride: ""
+
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+  hosts:
+    - host: api.example.com
+      paths: [{ path: /, pathType: Prefix }]
+  tls: []
+
+# All sensitive config goes through a Secret named ${release}-env.
+# Set externalSecret.enabled to bind to an existing secret instead.
+env:
+  PROXYVPN_DB__DSN: "root:changeme@tcp(mysql.proxy-vpn.svc:3306)/proxy_vpn?parseTime=true&loc=UTC&charset=utf8mb4"
+  PROXYVPN_REDIS__ADDR: "redis-master.proxy-vpn.svc:6379"
+  PROXYVPN_HTTP__ADDR: ":8080"
+  PROXYVPN_JWT__SECRET: "please-change-this-32-byte-secret-string"
+  PROXYVPN_PAYMENT__MODE: "mock"
+
+externalSecret:
+  enabled: false
+  name: ""
+
+# Probes hit the endpoints provided by internal/pkg/httpx (Phase 10).
+probes:
+  liveness:
+    path: /healthz
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  readiness:
+    path: /readyz
+    initialDelaySeconds: 5
+    periodSeconds: 5
+
+# Prometheus Operator integration. Set true if the operator's CRDs are
+# installed in the cluster.
+serviceMonitor:
+  enabled: false
+  interval: 15s
+  scrapeTimeout: 10s
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]

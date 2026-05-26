@@ -1,0 +1,15 @@
+apiVersion: v2
+name: proxy-vpn
+description: Enterprise VPN airport (proxy_VPN) — API + worker + node-agent
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - vpn
+  - proxy
+  - airport
+home: https://github.com/0x1F6A/proxy_VPN
+sources:
+  - https://github.com/0x1F6A/proxy_VPN
+maintainers:
+  - name: 0x1F6A

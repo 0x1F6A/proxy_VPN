@@ -157,3 +157,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `internal/pkg/httpx/metrics_test.go`: integration test asserting `/metrics` exposes counters for served routes.
 
 Note: `/healthz`, `/readyz`, `/metrics` endpoints and MySQL/Redis readiness checks were already in place; this phase adds per-request metrics and the operations runbook on top.
+
+## [Unreleased] - Deployment: Dockerfile (multi-bin) + docker-compose + Helm
+
+### Added
+- `deploy/docker-compose.yml`: production-style stack (api+worker+mysql+redis), config via PROXYVPN_* env.
+- `deploy/helm/proxy-vpn/`: Helm chart v0.1.0
+  - api Deployment (rolling, maxSurge=1/maxUnavailable=0) + Service
+  - worker Deployment
+  - Secret (envFrom) + optional externalSecret bind
+  - optional Ingress + ServiceMonitor (Prometheus Operator CRD)
+  - blue/green pod label (`colour: blue|green`) for Service-selector flipping
+  - liveness/readiness probes wired to /healthz, /readyz
+  - non-root, read-only rootfs, dropped caps
+- `deploy/helm/proxy-vpn/README.md`: install / blue-green / canary / external-secrets guide
+
+### Changed
+- `deploy/Dockerfile`: Go 1.24 → 1.25; added `BIN` build-arg so the same Dockerfile produces api / worker / node-agent / usdt-watcher / admin images.
+
+Verified: `helm lint` + `helm template` clean; `docker compose -f deploy/docker-compose.yml config` valid.
