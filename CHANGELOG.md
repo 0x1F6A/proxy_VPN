@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Phase 2 (用户体系)
+- 六边形分层 `internal/user/{domain,ports,service,infra/{gormrepo,rediskv,smtpmail},transport/httpapi}`。
+- `internal/pkg/auth`：bcrypt 密码哈希、HS256 JWT 签发/解析、TOTP（pquerna/otp）、SHA256/RandomToken 工具。
+- `internal/pkg/idgen`：UUID / InviteCode / SubscriptionToken。
+- 用例：注册、登录（含 2FA）、Refresh 轮换、Logout（撤销 access+refresh）、修改密码、Me、2FA enroll/verify/disable。
+- HTTP 路由 `/api/v1/auth/*` + `/api/v1/user/*`，带 AuthRequired 中间件（Bearer + JWT 校验 + Redis 黑名单）。
+- 配置追加 `smtp` / `rate` 段；dev 默认对接 MailHog 1025。
+- 失败登录 / 验证码节流（Redis 固定窗口计数器）。
+- 单测覆盖 auth 包以及 user/service 全部主路径（fake repos / blacklist / limiter）。
+
 ### Added — Phase 1 (基础设施 / 依赖装配)
 - `deploy/docker-compose.dev.yml`：MySQL 8 / Redis 7 / MailHog / Prometheus / Grafana / Loki 一键本地起栈。
 - `deploy/prometheus/prometheus.yml`、`deploy/grafana/provisioning/datasources/datasources.yml`。

@@ -20,6 +20,8 @@ type Config struct {
 	MySQL MySQLConfig `mapstructure:"mysql"`
 	Redis RedisConfig `mapstructure:"redis"`
 	JWT   JWTConfig   `mapstructure:"jwt"`
+	SMTP  SMTPConfig  `mapstructure:"smtp"`
+	Rate  RateConfig  `mapstructure:"rate"`
 }
 
 type AppConfig struct {
@@ -55,6 +57,20 @@ type JWTConfig struct {
 	RefreshTTL      time.Duration `mapstructure:"refresh_ttl"`
 	Issuer          string        `mapstructure:"issuer"`
 	AllowedClockSkew time.Duration `mapstructure:"allowed_clock_skew"`
+}
+
+type SMTPConfig struct {
+	Host     string `mapstructure:"host"`
+	Port     int    `mapstructure:"port"`
+	Username string `mapstructure:"username"`
+	Password string `mapstructure:"password"`
+	From     string `mapstructure:"from"`
+	UseTLS   bool   `mapstructure:"use_tls"`
+}
+
+type RateConfig struct {
+	SendCodePerEmailMin int `mapstructure:"send_code_per_email_min"`
+	LoginFailPerIPMin   int `mapstructure:"login_fail_per_ip_min"`
 }
 
 // Load reads configuration from (in priority order): env vars, ./config.yaml,
@@ -107,6 +123,14 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("jwt.refresh_ttl", 7*24*time.Hour)
 	v.SetDefault("jwt.issuer", "proxy_VPN")
 	v.SetDefault("jwt.allowed_clock_skew", 30*time.Second)
+
+	v.SetDefault("smtp.host", "127.0.0.1")
+	v.SetDefault("smtp.port", 1025)
+	v.SetDefault("smtp.from", "no-reply@proxy-vpn.local")
+	v.SetDefault("smtp.use_tls", false)
+
+	v.SetDefault("rate.send_code_per_email_min", 1)
+	v.SetDefault("rate.login_fail_per_ip_min", 10)
 }
 
 func envOr(key, fallback string) string {

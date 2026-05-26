@@ -11,10 +11,19 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/0x1F6A/proxy_VPN/internal/pkg/auth"
 	"github.com/0x1F6A/proxy_VPN/internal/pkg/config"
 	"github.com/0x1F6A/proxy_VPN/internal/pkg/httpx"
 	"github.com/0x1F6A/proxy_VPN/internal/pkg/logger"
 	"github.com/0x1F6A/proxy_VPN/internal/pkg/storage"
+	"github.com/0x1F6A/proxy_VPN/internal/user/infra/gormrepo"
+	"github.com/0x1F6A/proxy_VPN/internal/user/infra/rediskv"
+	"github.com/0x1F6A/proxy_VPN/internal/user/infra/smtpmail"
+	"github.com/0x1F6A/proxy_VPN/internal/user/ports"
+	"github.com/0x1F6A/proxy_VPN/internal/user/service"
+	"github.com/0x1F6A/proxy_VPN/internal/user/transport/httpapi"
+
+	"github.com/gin-gonic/gin"
 )
 
 var (
@@ -60,6 +69,13 @@ func main() {
 		ReadinessChecks: checks,
 	})
 
+	if db != nil && rdb != nil {
+		mountUserAPI(router, cfg, db, rdb)
+		log.Info("user API mounted at /api/v1")
+	} else {
+		log.Warn("user API not mounted: requires both MySQL and Redis")
+	}
+
 	srv := &http.Server{
 		Addr:              cfg.HTTP.Addr,
 		Handler:           router,
@@ -86,4 +102,28 @@ func main() {
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Error("graceful shutdown", "err", err)
 	}
+}
+
+// mountUserAPI wires the user-bounded-context HTTP routes onto the engine.
+// Kept separate to keep main() readable.
+func mountUserAPI(r *gin.Engine, cfg *config.Config, db *storage.MySQL, rdb *storage.Redis) {
+jwtSigner := auth.NewJWT(cfg.JWT.Secret, cfg.JWT.AccessTTL, cfg.JWT.Issuer, cfg.JWT.AllowedClockSkew)
+blacklist := rediskv.NewBlacklist(rdb.Client)
+limiter := rediskv.NewLimiter(rdb.Client)
+
+deps := service.Deps{
+Users:     gormrepo.NewUserRepo(db.DB),
+Refresh:   gormrepo.NewRefreshRepo(db.DB),
+Codes:     gormrepo.NewEmailCodeRepo(db.DB),
+Logs:      gormrepo.NewLoginLogRepo(db.DB),
+Mailer:    smtpmail.New(cfg.SMTP),
+Blacklist: blacklist,
+Rate:      limiter,
+JWT:       jwtSigner,
+Cfg:       cfg,
+}
+var _ ports.UserRepo = deps.Users
+h := httpapi.New(service.New(deps), jwtSigner, blacklist)
+v1 := r.Group("/api/v1")
+h.Register(v1)
 }

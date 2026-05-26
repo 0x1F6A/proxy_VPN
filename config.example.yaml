@@ -27,3 +27,16 @@ jwt:
   refresh_ttl: 168h
   issuer: "proxy_VPN"
   allowed_clock_skew: 30s
+
+smtp:
+  # Dev: docker-compose ships MailHog on 1025 (no auth/TLS).
+  host: "127.0.0.1"
+  port: 1025
+  username: ""
+  password: ""
+  from: "no-reply@proxy-vpn.local"
+  use_tls: false
+
+rate:
+  send_code_per_email_min: 1   # at most 1 send per minute per (scene,email)
+  login_fail_per_ip_min: 10    # at most 10 failed logins per minute per IP
