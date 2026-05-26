@@ -47,10 +47,18 @@ func pmToDomain(r *paymentRow) *domain.Payment {
 	}
 }
 func pmToRow(p *domain.Payment) *paymentRow {
+	amountToken := p.AmountToken
+	if amountToken == "" {
+		amountToken = "0"
+	}
+	amountCNY := p.AmountCNY
+	if amountCNY == "" {
+		amountCNY = "0"
+	}
 	return &paymentRow{
 		ID: p.ID, OrderNo: p.OrderNo, UserID: p.UserID,
 		Channel: string(p.Channel), ChannelTradeNo: p.ChannelTradeNo,
-		AmountCNY: p.AmountCNY, AmountToken: p.AmountToken,
+		AmountCNY: amountCNY, AmountToken: amountToken,
 		Status: string(p.Status), QRorURL: p.QRorURL, Address: p.Address,
 		RawNotify: p.RawNotify, PaidAt: p.PaidAt, ExpiredAt: p.ExpiredAt,
 	}
