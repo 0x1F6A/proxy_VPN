@@ -3,6 +3,16 @@ import { useNavigate } from 'react-router-dom'
 import { http } from '../api/http'
 import { useAuth } from '../store/auth'
 
+function roleFromJWT(token: string): string {
+  try {
+    const payload = token.split('.')[1]
+    const json = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')))
+    return json.role || 'user'
+  } catch {
+    return 'user'
+  }
+}
+
 export function Login() {
   const nav = useNavigate()
   const setAuth = useAuth((s) => s.setAuth)
@@ -10,12 +20,13 @@ export function Login() {
     try {
       const r = await http.post<any>('/auth/login', v)
       const data: any = r.data
-      const role = data.role || 'user'
+      const token: string = data.access_token
+      const role = roleFromJWT(token)
       if (!['admin', 'ops', 'finance'].includes(role)) {
         message.error('该账号无管理员权限')
         return
       }
-      setAuth(data.access_token, v.email, role)
+      setAuth(token, v.email, role)
       nav('/')
     } catch (e: any) {
       message.error(e.message || '登录失败')
