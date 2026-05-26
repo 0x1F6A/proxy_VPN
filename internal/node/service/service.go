@@ -13,6 +13,7 @@ import (
 
 	"github.com/0x1F6A/proxy_VPN/internal/node/domain"
 	"github.com/0x1F6A/proxy_VPN/internal/node/ports"
+	"github.com/0x1F6A/proxy_VPN/internal/node/service/nodecfg"
 	"github.com/0x1F6A/proxy_VPN/internal/node/service/subgen"
 	"github.com/0x1F6A/proxy_VPN/internal/pkg/idgen"
 )
@@ -138,6 +139,20 @@ func (s *Service) AgentHeartbeat(ctx context.Context, nodeToken string, hb ports
 func (s *Service) MarkStaleNow(ctx context.Context) (int64, error) {
 	cutoff := time.Now().Add(-s.d.HeartbeatTimeout)
 	return s.d.Nodes.MarkStale(ctx, cutoff)
+}
+
+// AgentConfig renders the server-side proxy config (xray) for the calling
+// node. Used by node-agent's reload loop.
+func (s *Service) AgentConfig(ctx context.Context, nodeToken string) (nodecfg.Rendered, error) {
+	n, err := s.d.Nodes.FindByTokenHash(ctx, sha256hex(nodeToken))
+	if err != nil || n == nil {
+		return nodecfg.Rendered{}, domain.ErrNodeAuth
+	}
+	subs, err := s.d.Subs.ListActive(ctx, 0)
+	if err != nil {
+		return nodecfg.Rendered{}, err
+	}
+	return nodecfg.RenderXray(*n, subs)
 }
 
 // RunStaleMarker periodically marks nodes offline if their last_heartbeat_at

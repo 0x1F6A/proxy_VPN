@@ -58,6 +58,7 @@ func (h *Handler) Register(v1 *gin.RouterGroup, root *gin.Engine) {
 	{
 		agent.POST("/register", h.agentRegister)
 		agent.POST("/heartbeat", h.agentHeartbeat)
+		agent.POST("/config", h.agentConfig)
 	}
 
 	// public subscription, mounted on root (no /api/v1) so QR codes are short.
@@ -302,6 +303,33 @@ func (h *Handler) agentHeartbeat(c *gin.Context) {
 		return
 	}
 	c.JSON(200, gin.H{"code": 0, "message": "ok"})
+}
+
+type agentConfigReq struct {
+	NodeToken string `json:"node_token" binding:"required"`
+	KnownHash string `json:"known_hash"`
+}
+
+func (h *Handler) agentConfig(c *gin.Context) {
+	var req agentConfigReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"code": 4000, "message": err.Error()})
+		return
+	}
+	r, err := h.svc.AgentConfig(c.Request.Context(), req.NodeToken)
+	if err != nil {
+		mapErr(c, err)
+		return
+	}
+	if req.KnownHash != "" && req.KnownHash == r.Version {
+		c.JSON(200, gin.H{"code": 0, "data": gin.H{"version": r.Version, "unchanged": true}})
+		return
+	}
+	c.JSON(200, gin.H{"code": 0, "data": gin.H{
+		"version": r.Version,
+		"format":  r.Format,
+		"config":  r.Config,
+	}})
 }
 
 // ----- subscription ---------------------------------------------------

@@ -120,6 +120,16 @@ func (f *fakeSubs) LookupBySubToken(ctx context.Context, token string) (*ports.S
 	return f.m[token], nil
 }
 
+func (f *fakeSubs) ListActive(_ context.Context, _ int) ([]ports.Subscriber, error) {
+	out := make([]ports.Subscriber, 0, len(f.m))
+	for _, v := range f.m {
+		if v != nil {
+			out = append(out, *v)
+		}
+	}
+	return out, nil
+}
+
 // ------- helpers -------------------------------------------------------
 
 func newSvc(t *testing.T) (*service.Service, *fakeNodeRepo) {

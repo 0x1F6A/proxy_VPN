@@ -113,3 +113,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - 整体服务框架.md — 系统总体架构与模块拆分。
 - docs/api.md — 对外 / 管理 / 内部 gRPC API 设计 v0.1。
 - docs/开发顺序与稳定性检查.md — 10 阶段交付路线与稳定性 checklist。
+
+## [Unreleased] - Phase 7: Node config render + reload loop
+
+### Added
+- `internal/node/service/nodecfg`: deterministic xray server-side config renderer (VLESS-Reality / Trojan / Hysteria2 / SS-2022) with stable version hash; per-user `email=u<id>` so xray Stats API queries are trivial.
+- `POST /api/v1/node-agent/config` endpoint (node_token auth, supports `known_hash` short-circuit).
+- node-agent `configloop.go`: periodic config pull, atomic write to `--config-out`, optional `--reload-cmd` exec.
+- `SubscriberPort.ListActive` (excludes banned + expired plans) with gormrepo impl.

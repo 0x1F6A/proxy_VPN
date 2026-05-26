@@ -42,6 +42,9 @@ func main() {
 	nodeToken := flag.String("token", os.Getenv("PROXYVPN_NODE_TOKEN"), "per-node bootstrap token")
 	interval := flag.Duration("interval", 30*time.Second, "heartbeat interval")
 	nodeID := flag.Uint64("node-id", uint64Env("PROXYVPN_NODE_ID"), "control-plane assigned node id (for traffic reports)")
+	configOut := flag.String("config-out", os.Getenv("PROXYVPN_CONFIG_OUT"), "path to write rendered xray config (empty disables)")
+	reloadCmd := flag.String("reload-cmd", os.Getenv("PROXYVPN_RELOAD_CMD"), "shell command to reload xray after config change")
+	configEvery := flag.Duration("config-interval", 60*time.Second, "config-poll interval")
 	flag.Parse()
 
 	if *bootstrap == "" || *nodeToken == "" {
@@ -63,6 +66,7 @@ func main() {
 	} else {
 		log.Println("traffic loops disabled (no --node-id provided)")
 	}
+	go runConfigLoop(ctx, *endpoint, *nodeToken, *configOut, *reloadCmd, *configEvery)
 	go func() {
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)

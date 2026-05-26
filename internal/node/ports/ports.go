@@ -37,6 +37,9 @@ type NodeGroupRepo interface {
 // user infra layer.
 type SubscriberPort interface {
 	LookupBySubToken(ctx context.Context, token string) (*Subscriber, error)
+	// ListActive returns all currently provisionable subscribers (status enabled,
+	// plan not expired). Used by the node-config renderer; cap with limit (0 = no cap).
+	ListActive(ctx context.Context, limit int) ([]Subscriber, error)
 }
 
 type Subscriber struct {

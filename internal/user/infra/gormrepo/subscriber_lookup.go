@@ -32,3 +32,27 @@ func (r *SubscriberLookupRepo) LookupBySubToken(ctx context.Context, token strin
 		Status: int8(row.Status),
 	}, nil
 }
+
+// ListActive returns enabled, non-expired subscribers. `banned=0` is also
+// enforced so the rendered node config never includes a flagged user.
+func (r *SubscriberLookupRepo) ListActive(ctx context.Context, limit int) ([]nodeports.Subscriber, error) {
+	q := r.db.WithContext(ctx).Model(&userRow{}).
+		Where("status = ? AND COALESCE(banned, 0) = 0", 1).
+		Where("plan_expire_at IS NULL OR plan_expire_at > NOW()")
+	if limit > 0 {
+		q = q.Limit(limit)
+	}
+	var rows []userRow
+	if err := q.Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]nodeports.Subscriber, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, nodeports.Subscriber{
+			UserID: row.ID, UUID: row.UUID,
+			PlanID: row.PlanID, PlanExpireAt: row.PlanExpireAt,
+			Status: int8(row.Status),
+		})
+	}
+	return out, nil
+}
