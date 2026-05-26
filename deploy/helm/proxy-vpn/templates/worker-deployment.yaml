@@ -17,6 +17,9 @@ spec:
       labels:
         {{- include "proxy-vpn.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: worker
+        {{- if .Values.region }}
+        region: {{ .Values.region | quote }}
+        {{- end }}
       annotations:
         checksum/env: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
     spec:
@@ -24,6 +27,16 @@ spec:
       imagePullSecrets: {{- toYaml . | nindent 8 }}
       {{- end }}
       securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.topologySpread.enabled }}
+      topologySpreadConstraints:
+        - maxSkew: {{ .Values.topologySpread.maxSkew }}
+          topologyKey: {{ .Values.topologySpread.topologyKey }}
+          whenUnsatisfiable: {{ .Values.topologySpread.whenUnsatisfiable }}
+          labelSelector:
+            matchLabels:
+              {{- include "proxy-vpn.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: worker
+      {{- end }}
       containers:
         - name: worker
           image: {{ include "proxy-vpn.image" (dict "Values" .Values "Chart" .Chart "bin" "worker" "override" .Values.worker.imageOverride) }}

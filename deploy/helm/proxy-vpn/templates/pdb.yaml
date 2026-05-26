@@ -1,0 +1,31 @@
+{{- if and .Values.pdb.enabled .Values.api.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "proxy-vpn.fullname" . }}-api
+  labels:
+    {{- include "proxy-vpn.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  minAvailable: {{ .Values.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "proxy-vpn.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+{{- end }}
+{{- if and .Values.pdb.enabled .Values.worker.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "proxy-vpn.fullname" . }}-worker
+  labels:
+    {{- include "proxy-vpn.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  minAvailable: {{ .Values.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "proxy-vpn.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+{{- end }}

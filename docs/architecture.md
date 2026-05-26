@@ -340,6 +340,24 @@ usdt-watcher (独立进程):
 | 流量记录 (ClickHouse) | 5 万用户 × 30 天 × 24 行 = 3600 万行/月，~2 GB |
 | 备份 | 数据库 1 GB / 天 → S3 30 GB/月 |
 
+### 11.1 跨区灾备拓扑（Phase 14-A）
+
+控制面默认单 Region；规模化后切换到「主 + 暖备」双区拓扑：
+
+| 资源 | 主区 (us-east-1) | 备区 (ap-tokyo-1) |
+|---|---|---|
+| api / admin / user-web / worker | active | warm standby（同样起 pod） |
+| MySQL | primary（读写） | read replica（异步复制，lag ≤ 30s） |
+| Redis | Sentinel 3 节点（master 在本区） | Sentinel 3 节点（cross-region observer） |
+| 流量入口 | Cloudflare LB Geo Steering | 失败时自动接管 |
+
+- 配置层：`MySQLConfig.ReadReplicas` 注入只读 DSN 列表，自动挂 `gorm.io/plugin/dbresolver`；`RedisConfig.Mode=sentinel` 切到 `NewFailoverClient`
+- 探活层：`/readyz` 输出 `mysql.write / mysql.read / redis` 子状态，503 时 LB 摘除单 pod；Cloudflare HC 30s 探备区 `verify-region.sh`
+- 故障转移：`deploy/scripts/failover.sh promote` 手动 promote read replica → primary（runbook 见 `docs/ops.md`）
+- 目标：RPO ≤ 30s、RTO ≤ 5min
+
+详见 `docs/ops.md` § 跨区灾备。
+
 ---
 
 ## 12. 演进路线（与开发顺序文档呼应）

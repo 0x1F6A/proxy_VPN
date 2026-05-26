@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Phase 14-A: 多控制面跨区灾备
+- `internal/pkg/config`: `MySQLConfig` 新增 `ReadReplicas []string` + `ResolverPolicy`（`random` 默认 / `round_robin`）；`RedisConfig` 新增 `Mode`（`standalone` 默认 / `sentinel`）+ `MasterName` + `SentinelAddrs`，全部带零值默认确保老配置零破坏。
+- `internal/pkg/storage`: `NewMySQL` 在 `ReadReplicas` 非空时挂 `gorm.io/plugin/dbresolver`，SELECT 自动负载到只读池，写流量留在主库；新增 `HasReplicas()` / `ReadPing(ctx)` 与本地 `roundRobinPolicy`。`NewRedis` 在 `Mode=sentinel` 走 `redis.NewFailoverClient`，自动跟随主库重选举。
+- `cmd/api` / `cmd/admin` / `cmd/user-web`: `/readyz` 拆 `mysql.write` + `mysql.read`（仅当配置了 read replica 时注册），任一失败即返回 503，方便 L7 LB 精细摘除。
+- `deploy/helm/proxy-vpn/values.yaml`: 新增顶层 `region`、`topologySpread{enabled,maxSkew,topologyKey,whenUnsatisfiable}`、`pdb{enabled,minAvailable}`；`api-deployment.yaml` 与 `worker-deployment.yaml` 同步加 region label + 可选 `topologySpreadConstraints`。
+- `deploy/helm/proxy-vpn/templates/pdb.yaml`（新）：可选 PodDisruptionBudget，避免节点 drain 时单实例 API 被同时干掉。
+- `deploy/scripts/failover.sh`（新）：手动 promote read replica 到 primary 的 runbook 脚本，含 check / promote 双子命令 + 善后步骤清单。
+- `deploy/scripts/verify-region.sh`（新）：单 URL 汇聚 `/healthz` + `/readyz` 探测结果，给 Cloudflare / Route53 health check 用。
+- `docs/ops.md`: 新增「跨区灾备」章节（拓扑、DNS HC、RPO/RTO 目标、failover runbook）。
+- `docs/architecture.md` §11: 加跨区拓扑说明与 SLO 对齐。
+
 ### Added — Phase 13: 节点出口 sing-box + 多协议混合节点
 - `internal/node/service/nodecfg/singbox.go`: 新增 `RenderSingBox`，与现有 `RenderXray` 并列，输出完整的 sing-box 1.8+ 服务端配置（log/dns/inbounds/outbounds + v2ray_api stats）。4 协议全覆盖（VLESS-Reality / Trojan / Hysteria2 / SS-2022），Version 哈希算法与 xray 渲染器一致，node-agent 可继续按 hash 跳过未变更的写盘与 reload。
 - `internal/node/domain/node.go`: `Node` 新增 `Engine`（`"xray"` | `"sing-box"`，默认 xray）与 `Inbounds`（`json.RawMessage`，可选 `[]NodeInbound`）字段；新增 `NodeInbound` 类型与 `AllInbounds()` / `EffectiveEngine()` / `IsValidEngine()` 辅助。一个节点现在可声明 N 个不同协议 / 不同端口的 inbound 共享同一台 VPS（多协议混合节点）。

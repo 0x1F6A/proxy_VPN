@@ -92,3 +92,26 @@ securityContext:
   readOnlyRootFilesystem: true
   capabilities:
     drop: [ALL]
+
+# ---- Phase 14-A: multi-region disaster recovery -----------------------
+# region is added as a pod label and exposed via the env var
+# PROXYVPN_REGION so SLO dashboards can split traffic. It is purely
+# informational at the K8s level — actual region steering happens in
+# upstream DNS / global load balancer.
+region: ""
+
+# topologySpreadConstraints applied to api / worker / user-web pods so that
+# replicas spread evenly across failure domains (zones by default). Empty
+# disables the constraint.
+topologySpread:
+  enabled: false
+  maxSkew: 1
+  topologyKey: topology.kubernetes.io/zone
+  whenUnsatisfiable: ScheduleAnyway
+
+# pdb pins minAvailable replicas during voluntary disruptions (node drains
+# / cluster upgrades). Disabled by default so single-replica dev clusters
+# still upgrade cleanly.
+pdb:
+  enabled: false
+  minAvailable: 1

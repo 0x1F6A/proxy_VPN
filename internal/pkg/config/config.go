@@ -48,12 +48,25 @@ type MySQLConfig struct {
 	MaxOpenConns    int           `mapstructure:"max_open_conns"`
 	MaxIdleConns    int           `mapstructure:"max_idle_conns"`
 	ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime"`
+	// ReadReplicas is an optional list of read-only DSNs. When non-empty
+	// the storage layer attaches gorm.io/plugin/dbresolver and routes
+	// SELECT queries across them. Writes always go to the primary DSN.
+	ReadReplicas []string `mapstructure:"read_replicas"`
+	// ResolverPolicy picks the load-balancing strategy across replicas:
+	// "random" (default) or "round_robin".
+	ResolverPolicy string `mapstructure:"resolver_policy"`
 }
 
 type RedisConfig struct {
 	Addr     string `mapstructure:"addr"`
 	Password string `mapstructure:"password"`
 	DB       int    `mapstructure:"db"`
+	// Mode selects the client topology: "standalone" (default) or
+	// "sentinel". In sentinel mode the storage layer uses
+	// redis.NewFailoverClient(MasterName, SentinelAddrs).
+	Mode          string   `mapstructure:"mode"`
+	MasterName    string   `mapstructure:"master_name"`
+	SentinelAddrs []string `mapstructure:"sentinel_addrs"`
 }
 
 type JWTConfig struct {

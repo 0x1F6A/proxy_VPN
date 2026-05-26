@@ -79,8 +79,11 @@ func main() {
 		log.Warn("mysql not available at startup, /readyz will fail until reachable", "err", err)
 	} else {
 		defer func() { _ = db.Close() }()
-		checks = append(checks, httpx.ReadinessCheck{Name: "mysql", Check: db.Ping})
-		log.Info("mysql connected")
+		checks = append(checks, httpx.ReadinessCheck{Name: "mysql.write", Check: db.Ping})
+		if db.HasReplicas() {
+			checks = append(checks, httpx.ReadinessCheck{Name: "mysql.read", Check: db.ReadPing})
+		}
+		log.Info("mysql connected", "read_replicas", db.HasReplicas())
 	}
 
 	rdb, err := storage.NewRedis(cfg.Redis)
