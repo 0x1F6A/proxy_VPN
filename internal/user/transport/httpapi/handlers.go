@@ -57,7 +57,7 @@ func (h *Handler) login(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 4000, "message": err.Error()})
 		return
 	}
-	pair, err := h.svc.Login(c.Request.Context(), req.Email, req.Password, req.TOTP, c.ClientIP(), c.GetHeader("User-Agent"))
+	pair, err := h.svc.Login(c.Request.Context(), req.Email, req.Password, req.TOTP, c.ClientIP(), c.GetHeader("User-Agent"), c.GetHeader("Accept-Language"))
 	if err != nil {
 		mapErr(c, err)
 		return

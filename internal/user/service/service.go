@@ -28,6 +28,7 @@ type Deps struct {
 	Blacklist ports.AccessTokenBlacklist
 	Rate      ports.RateLimiter
 	Admin     ports.AdminUserRepo // optional; admin endpoints disabled if nil
+	Risk      ports.RiskHook      // optional; risk hooks degrade to no-op when nil
 	JWT       *auth.JWT
 	Cfg       *config.Config
 }
@@ -38,6 +39,11 @@ type Service struct {
 }
 
 func New(d Deps) *Service { return &Service{d: d} }
+
+// SetRisk lets late wiring inject the risk hook after the service is
+// already constructed (e.g. when admin / api main funcs build the user
+// service before they have all risk deps).
+func (s *Service) SetRisk(h ports.RiskHook) { s.d.Risk = h }
 
 // ----- helpers ----------------------------------------------------------
 
@@ -183,11 +189,22 @@ func (s *Service) issueTokens(ctx context.Context, u *domain.User, ip, ua string
 }
 
 // Login authenticates by email+password (+TOTP if enrolled). On 2FA-enrolled
-// accounts callers must pass totp.
-func (s *Service) Login(ctx context.Context, email, password, totp, ip, ua string) (*TokenPair, error) {
+// accounts callers must pass totp. acceptLang feeds into the risk-hook device
+// fingerprint; pass "" if unknown.
+func (s *Service) Login(ctx context.Context, email, password, totp, ip, ua string, acceptLang ...string) (*TokenPair, error) {
+	al := ""
+	if len(acceptLang) > 0 {
+		al = acceptLang[0]
+	}
 	email, err := normalizeEmail(email)
 	if err != nil {
 		return nil, err
+	}
+	// Account-level lockout (Phase 15-A). Returns before any DB hit when locked.
+	if s.d.Risk != nil {
+		if err := s.d.Risk.PreLogin(ctx, email); err != nil {
+			return nil, err
+		}
 	}
 	limit := s.d.Cfg.Rate.LoginFailPerIPMin
 	if limit > 0 {
@@ -199,10 +216,16 @@ func (s *Service) Login(ctx context.Context, email, password, totp, ip, ua strin
 	u, err := s.d.Users.FindByEmail(ctx, email)
 	if err != nil || u == nil {
 		_ = s.d.Logs.Append(ctx, domain.LoginLog{Email: email, Success: false, IP: ip, UserAgent: ua, Reason: "no_user"})
+		if s.d.Risk != nil {
+			s.d.Risk.RegisterLoginFailure(ctx, email)
+		}
 		return nil, domain.ErrInvalidCredentials
 	}
 	if !auth.CheckPassword(u.PasswordHash, password) {
 		_ = s.d.Logs.Append(ctx, domain.LoginLog{UserID: &u.ID, Email: email, Success: false, IP: ip, UserAgent: ua, Reason: "bad_password"})
+		if s.d.Risk != nil {
+			s.d.Risk.RegisterLoginFailure(ctx, email)
+		}
 		return nil, domain.ErrInvalidCredentials
 	}
 	switch u.Status {
@@ -217,6 +240,9 @@ func (s *Service) Login(ctx context.Context, email, password, totp, ip, ua strin
 		}
 		if !auth.ValidateTOTP(u.TOTPSecret, totp) {
 			_ = s.d.Logs.Append(ctx, domain.LoginLog{UserID: &u.ID, Email: email, Success: false, IP: ip, UserAgent: ua, Reason: "bad_totp"})
+			if s.d.Risk != nil {
+				s.d.Risk.RegisterLoginFailure(ctx, email)
+			}
 			return nil, domain.ErrTOTPInvalid
 		}
 	}
@@ -226,6 +252,9 @@ func (s *Service) Login(ctx context.Context, email, password, totp, ip, ua strin
 	}
 	_ = s.d.Users.UpdateLogin(ctx, u.ID, time.Now(), ip)
 	_ = s.d.Logs.Append(ctx, domain.LoginLog{UserID: &u.ID, Email: email, Success: true, IP: ip, UserAgent: ua})
+	if s.d.Risk != nil {
+		s.d.Risk.RegisterLoginSuccess(ctx, u.ID, email, ip, ua, al)
+	}
 	return pair, nil
 }
 

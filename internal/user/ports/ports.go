@@ -54,6 +54,14 @@ type RateLimiter interface {
 	Allow(ctx context.Context, key string, limit int, window time.Duration) (bool, error)
 }
 
+// RiskHook 是 Phase 15-A 风控接入点。所有方法可空实现（Service.Deps.Risk 为 nil
+// 时整个风控降级）。
+type RiskHook interface {
+	PreLogin(ctx context.Context, email string) error
+	RegisterLoginFailure(ctx context.Context, email string)
+	RegisterLoginSuccess(ctx context.Context, userID uint64, email, ip, ua, acceptLang string)
+}
+
 // AdminUserView is a flattened projection used by admin list / detail
 // endpoints; intentionally separate from domain.User so we can include
 // computed columns (traffic used %, plan name, etc).

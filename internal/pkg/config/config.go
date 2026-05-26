@@ -29,6 +29,28 @@ type Config struct {
 	ClickHouse ClickHouseConfig `mapstructure:"clickhouse"`
 	OIDC       OIDCConfig       `mapstructure:"oidc"`
 	SLA        SLAConfig        `mapstructure:"sla"`
+	Risk       RiskConfig       `mapstructure:"risk"`
+	I18n       I18nConfig       `mapstructure:"i18n"`
+}
+
+// RiskConfig 是 Phase 15-A 风控反滥用的总开关与阈值集合。所有字段都给了安全
+// 默认值；Enabled=false 时整个风控链路降级成日志，不阻断任何流程。
+type RiskConfig struct {
+	Enabled              bool          `mapstructure:"enabled"`
+	GeoIPDBPath          string        `mapstructure:"geoip_db_path"`     // MaxMind GeoLite2-Country.mmdb 路径，空则跳过地理判定
+	LoginLockThreshold   int           `mapstructure:"login_lock_threshold"`
+	LoginLockDuration    time.Duration `mapstructure:"login_lock_duration"`
+	SubMaxIPs            int           `mapstructure:"sub_max_ips"`        // 滚动窗口允许的最大并发 IP 数
+	SubRevokeThreshold   int           `mapstructure:"sub_revoke_threshold"`
+	SubWindow            time.Duration `mapstructure:"sub_window"`         // IP 共享检测窗口
+	OrderMaxFailRefund   int           `mapstructure:"order_max_fail_refund"`
+	OrderManualReviewIPs int           `mapstructure:"order_manual_review_ips"` // 同 IP 24h 多账号下单阈值
+}
+
+// I18nConfig 控制 Accept-Language 协商与默认 locale。
+type I18nConfig struct {
+	DefaultLocale    string   `mapstructure:"default_locale"`
+	SupportedLocales []string `mapstructure:"supported_locales"`
 }
 
 type AppConfig struct {
@@ -284,6 +306,18 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("sla.region", "default")
 	v.SetDefault("sla.probe_interval", time.Minute)
 	v.SetDefault("sla.probe_timeout", 5*time.Second)
+
+	v.SetDefault("risk.enabled", false)
+	v.SetDefault("risk.login_lock_threshold", 5)
+	v.SetDefault("risk.login_lock_duration", 15*time.Minute)
+	v.SetDefault("risk.sub_max_ips", 5)
+	v.SetDefault("risk.sub_revoke_threshold", 10)
+	v.SetDefault("risk.sub_window", time.Hour)
+	v.SetDefault("risk.order_max_fail_refund", 3)
+	v.SetDefault("risk.order_manual_review_ips", 3)
+
+	v.SetDefault("i18n.default_locale", "en")
+	v.SetDefault("i18n.supported_locales", []string{"en", "zh-CN", "zh-TW", "ja"})
 }
 
 func envOr(key, fallback string) string {
