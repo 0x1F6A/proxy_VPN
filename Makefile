@@ -52,6 +52,10 @@ cover: ## Run tests with coverage report
 	$(GO) test -race -count=1 -coverprofile=coverage.out ./...
 	$(GO) tool cover -func=coverage.out | tail -n 1
 
+.PHONY: test-integration
+test-integration: ## Run integration tests (requires Docker; spins up MySQL+Redis containers)
+	$(GO) test -tags=integration -count=1 -timeout=10m ./...
+
 .PHONY: vet
 vet: ## go vet
 	$(GO) vet ./...

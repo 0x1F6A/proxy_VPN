@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- `internal/pkg/testsupport`: helpers (`StartMySQL`, `StartRedis`) that spin up disposable MySQL/Redis containers via testcontainers-go for integration tests. Migrations are loaded automatically.
+- Integration tests (`//go:build integration` tag) for `traffic/infra/gormrepo` (QuotaRepo + UsageFallbackSink), `traffic/infra/redisban` (BanCache), and `user/infra/gormrepo` (UserRepo + RefreshRepo).
+- `make test-integration` Makefile target.
+
+### Fixed
+- Migration `000003_traffic.up.sql`: dropped the legacy `traffic_daily` table (created by `000001_init_schema.up.sql` with the pre-Phase-6 schema) before recreating it with the new per-user/per-day shape. Previously `CREATE TABLE IF NOT EXISTS` was a no-op against the legacy schema, leaving the `day`/`up_bytes`/`down_bytes` columns missing and breaking `QuotaRepo.UpsertDaily`/`SumDaily` at runtime.
+
 ## [v0.1.1] - 2026-05-26
 
 ### Fixed

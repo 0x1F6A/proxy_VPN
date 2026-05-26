@@ -6,7 +6,13 @@ ALTER TABLE `users`
   ADD COLUMN `rate_bps_down` BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '0=unlimited',
   ADD COLUMN `banned`        TINYINT(1)      NOT NULL DEFAULT 0 COMMENT 'over-quota or admin-set';
 
-CREATE TABLE IF NOT EXISTS `traffic_daily` (
+-- The legacy `traffic_daily` table shipped in 000001 used a different schema
+-- (id PK, stat_date, upload_bytes, download_bytes) intended for an earlier
+-- design that bundled node_id into the key. Phase 6 collapses to a much
+-- smaller per-user/per-day rollup, so we drop and recreate to match the
+-- shape the gormrepo expects.
+DROP TABLE IF EXISTS `traffic_daily`;
+CREATE TABLE `traffic_daily` (
   `user_id`    BIGINT UNSIGNED NOT NULL,
   `day`        DATE            NOT NULL,
   `up_bytes`   BIGINT UNSIGNED NOT NULL DEFAULT 0,
