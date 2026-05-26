@@ -133,6 +133,13 @@ func (s *Service) AgentHeartbeat(ctx context.Context, nodeToken string, hb ports
 	return n, nil
 }
 
+// MarkStaleNow flips nodes offline if their last_heartbeat_at is older
+// than HeartbeatTimeout. Exposed as a single-shot for asynq scheduling.
+func (s *Service) MarkStaleNow(ctx context.Context) (int64, error) {
+	cutoff := time.Now().Add(-s.d.HeartbeatTimeout)
+	return s.d.Nodes.MarkStale(ctx, cutoff)
+}
+
 // RunStaleMarker periodically marks nodes offline if their last_heartbeat_at
 // is older than HeartbeatTimeout.
 func (s *Service) RunStaleMarker(ctx context.Context, tick time.Duration, log func(string, ...any)) {

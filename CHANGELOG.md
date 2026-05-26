@@ -6,6 +6,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Phase 5 (真实支付 + Asynq 异步调度)
+- 全新 `internal/payment` 限界上下文：`domain/ports/service/infra/gormrepo/transport/httpapi` + provider 子包
+  （`alipay` 当面付 PreCreate、`wechat` Native v3、`usdt`-TRC20 链上扫描、`mockprov` HMAC 测试桩）。
+- 数据库迁移 `000002_payment.up.sql`：`payments` / `payment_addresses` / `chain_scan_cursor`
+  三张新表 + 修复 `orders` 幂等键（`uk_orders_idem` → `uk_orders_user_idem(user_id, idempotency_key)`）。
+- 跨上下文回调：`payment.ports.OrderPaidNotifier` 由 billing service 直接实现
+  （`GetOrderAmount` + 复用 `HandlePaid`），保持依赖方向 payment ← billing。
+- 路由：
+  - `POST /api/v1/orders/:no/pay`     —— 选择支付通道并返回 QR / 地址
+  - `GET  /api/v1/payments/:id`       —— 轮询支付状态
+  - `POST /pay/notify/:channel`       —— 根路径下的通道 webhook（短 URL）
+- 装配策略：mockprov 始终注册；alipay/wechat/usdt 仅在凭证齐全时挂载，缺失通道返回 `ErrChannelUnsupported`；
+  `payment.mode=mock` 模式下把 mock 注册到 alipay/wechat 槽位，方便本地联调。
+- 异步任务框架 `internal/pkg/asynqx`（+ `tasks` 子包）：基于 hibiken/asynq 封装
+  Client / Server / Scheduler；5 个 task type：`billing:auto_cancel_orders`、`node:mark_stale`、
+  `payment:expire_pending`、`payment:reconcile_channel`、`payment:scan_usdt_block`。
+- 新二进制 `cmd/worker`：消费 asynq 队列并运行 Scheduler 周期任务（1m 取消订单、30s 节点心跳过期、
+  1m 支付过期、5m 对账 alipay/wechat、15s USDT 扫块）；与 `cmd/api` 共享同一 Redis。
+- 配置追加 `PaymentConfig`（`mode/notify_base/return_base/mock_secret` + alipay/wechat/usdt 子段）
+  和 `AsynqConfig.Concurrency`；新增 setDefaults。
+- 单元测试：`payment/service`（CreatePayment 复用、HandleNotify 幂等、AmountMismatch、签名拒绝、ExpireOldPending）
+  + `mockprov` 签名往返 + `usdtprov.Scanner.Step`（fake TronClient + cursor 推进）。
+
+### Notes
+- `cmd/api` 保留 `RunAutoCancelLoop` / `RunStaleMarker` 两个内嵌 goroutine 作为单机部署的回退；
+  与 `cmd/worker` 同时运行也安全（操作均幂等）。
+- USDT 汇率字段 `payment.usdt.cny_per_usdt` 当前手工配置（默认 7.30），后续可接 oracle。
+- Wechat provider 启动时会调用 `RegisterDownloaderWithPrivateKey` 注册证书下载器，凭证错误时返回 error；
+  此时该通道不挂载，但不会让 api 启动失败。
+
+
 ### Added — Phase 4 (节点与协议：Xray / Sing-box / Hysteria2 + 订阅)
 - 六边形分层 `internal/node/{domain,ports,service,service/subgen,infra/gormrepo,transport/httpapi}`。
 - 节点协议支持：`vless-reality` / `trojan` / `hysteria2` / `ss-2022`（受 `tls_config` + `transport_config` JSON 驱动，pass-through）。

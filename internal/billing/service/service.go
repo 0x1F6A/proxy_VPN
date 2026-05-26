@@ -236,6 +236,20 @@ func (s *Service) GetOrder(ctx context.Context, no string, userID uint64) (*doma
 	return o, nil
 }
 
+// GetOrderAmount looks up an order's net payable amount (after discount)
+// and owning user. Implements payment.ports.OrderPaidNotifier.
+func (s *Service) GetOrderAmount(ctx context.Context, no string) (string, uint64, error) {
+	o, err := s.d.Orders.FindByOrderNo(ctx, no)
+	if err != nil {
+		return "", 0, err
+	}
+	if o == nil {
+		return "", 0, domain.ErrOrderNotFound
+	}
+	amount := dec(o.AmountCNY).Sub(dec(o.DiscountCNY)).String()
+	return amount, o.UserID, nil
+}
+
 func (s *Service) ListMyOrders(ctx context.Context, userID uint64, limit, offset int) ([]domain.Order, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 20
@@ -312,6 +326,12 @@ func (s *Service) applyOrderEffects(ctx context.Context, o *domain.Order) error 
 }
 
 // ----- auto-cancel worker ----------------------------------------------
+
+// AutoCancelExpired flips pending orders past their expire_at to cancelled.
+// Exposed as a single-shot for asynq scheduling.
+func (s *Service) AutoCancelExpired(ctx context.Context) (int64, error) {
+	return s.d.Orders.ExpirePending(ctx, time.Now())
+}
 
 // RunAutoCancelLoop expires pending orders past their expire_at every tick.
 // Caller cancels the context to stop. Suitable until we wire Asynq in a

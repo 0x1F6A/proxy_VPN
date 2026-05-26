@@ -14,15 +14,17 @@ import (
 )
 
 type Config struct {
-	App   AppConfig   `mapstructure:"app"`
-	HTTP  HTTPConfig  `mapstructure:"http"`
-	Log   LogConfig   `mapstructure:"log"`
-	MySQL MySQLConfig `mapstructure:"mysql"`
-	Redis RedisConfig `mapstructure:"redis"`
-	JWT   JWTConfig   `mapstructure:"jwt"`
-	SMTP  SMTPConfig  `mapstructure:"smtp"`
-	Rate  RateConfig  `mapstructure:"rate"`
-	Node  NodeConfig  `mapstructure:"node"`
+	App     AppConfig     `mapstructure:"app"`
+	HTTP    HTTPConfig    `mapstructure:"http"`
+	Log     LogConfig     `mapstructure:"log"`
+	MySQL   MySQLConfig   `mapstructure:"mysql"`
+	Redis   RedisConfig   `mapstructure:"redis"`
+	JWT     JWTConfig     `mapstructure:"jwt"`
+	SMTP    SMTPConfig    `mapstructure:"smtp"`
+	Rate    RateConfig    `mapstructure:"rate"`
+	Node    NodeConfig    `mapstructure:"node"`
+	Payment PaymentConfig `mapstructure:"payment"`
+	Asynq   AsynqConfig   `mapstructure:"asynq"`
 }
 
 type AppConfig struct {
@@ -79,6 +81,50 @@ type NodeConfig struct {
 	BootstrapSecret  string        `mapstructure:"bootstrap_secret"`  // shared secret used by node-agent to register
 	HeartbeatTimeout time.Duration `mapstructure:"heartbeat_timeout"` // mark offline if no HB within
 	SubscriptionBase string        `mapstructure:"subscription_base"` // e.g. https://api.example.com
+}
+
+// PaymentConfig holds per-channel credentials. An empty channel block
+// disables that provider (the channel becomes unavailable for new orders).
+// Mode="mock" enables the in-memory mockprov even when live keys are
+// configured — used in dev/test.
+type PaymentConfig struct {
+	Mode       string                `mapstructure:"mode"`        // "live" or "mock"
+	NotifyBase string                `mapstructure:"notify_base"` // e.g. https://api.example.com
+	ReturnBase string                `mapstructure:"return_base"`
+	Alipay     AlipayConfig          `mapstructure:"alipay"`
+	Wechat     WechatPayConfig       `mapstructure:"wechat"`
+	USDT       USDTConfig            `mapstructure:"usdt"`
+	MockSecret string                `mapstructure:"mock_secret"` // hmac secret for mockprov signing
+}
+
+type AlipayConfig struct {
+	AppID              string `mapstructure:"app_id"`
+	PrivateKey         string `mapstructure:"private_key"`         // PEM string
+	AliPayPublicKey    string `mapstructure:"alipay_public_key"`   // PEM string
+	Production         bool   `mapstructure:"production"`
+}
+
+type WechatPayConfig struct {
+	MchID         string `mapstructure:"mch_id"`
+	AppID         string `mapstructure:"app_id"`
+	SerialNo      string `mapstructure:"serial_no"`
+	PrivateKey    string `mapstructure:"private_key"` // PEM string
+	APIv3Key      string `mapstructure:"api_v3_key"`
+}
+
+type USDTConfig struct {
+	TronGRPC      string        `mapstructure:"tron_grpc"`      // e.g. grpc.trongrid.io:50051
+	ContractAddr  string        `mapstructure:"contract_addr"`  // USDT TRC20: TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t
+	Confirmations int64         `mapstructure:"confirmations"`
+	ScanInterval  time.Duration `mapstructure:"scan_interval"`
+	CNYPerUSDT    string        `mapstructure:"cny_per_usdt"`
+	AddressPool   []string      `mapstructure:"address_pool"`   // seed pool on startup
+}
+
+// AsynqConfig configures the asynq worker / scheduler runtime.
+type AsynqConfig struct {
+	Concurrency  int           `mapstructure:"concurrency"`
+	// re-uses redis from RedisConfig
 }
 
 // Load reads configuration from (in priority order): env vars, ./config.yaml,
@@ -143,6 +189,16 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("node.bootstrap_secret", "change-me-bootstrap")
 	v.SetDefault("node.heartbeat_timeout", 90*time.Second)
 	v.SetDefault("node.subscription_base", "http://127.0.0.1:8080")
+
+	v.SetDefault("payment.mode", "mock")
+	v.SetDefault("payment.notify_base", "http://127.0.0.1:8080")
+	v.SetDefault("payment.mock_secret", "change-me-mock")
+	v.SetDefault("payment.usdt.confirmations", int64(19))
+	v.SetDefault("payment.usdt.scan_interval", 15*time.Second)
+	v.SetDefault("payment.usdt.cny_per_usdt", "7.30")
+	v.SetDefault("payment.usdt.contract_addr", "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t")
+
+	v.SetDefault("asynq.concurrency", 8)
 }
 
 func envOr(key, fallback string) string {

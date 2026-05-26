@@ -22,6 +22,15 @@ import (
 	noderepo "github.com/0x1F6A/proxy_VPN/internal/node/infra/gormrepo"
 	nodesvc "github.com/0x1F6A/proxy_VPN/internal/node/service"
 	nodehttp "github.com/0x1F6A/proxy_VPN/internal/node/transport/httpapi"
+	paydomain "github.com/0x1F6A/proxy_VPN/internal/payment/domain"
+	payrepo "github.com/0x1F6A/proxy_VPN/internal/payment/infra/gormrepo"
+	payports "github.com/0x1F6A/proxy_VPN/internal/payment/ports"
+	alipayprov "github.com/0x1F6A/proxy_VPN/internal/payment/provider/alipay"
+	"github.com/0x1F6A/proxy_VPN/internal/payment/provider/mockprov"
+	usdtprov "github.com/0x1F6A/proxy_VPN/internal/payment/provider/usdt"
+	wechatprov "github.com/0x1F6A/proxy_VPN/internal/payment/provider/wechat"
+	paysvc "github.com/0x1F6A/proxy_VPN/internal/payment/service"
+	payhttp "github.com/0x1F6A/proxy_VPN/internal/payment/transport/httpapi"
 	"github.com/0x1F6A/proxy_VPN/internal/user/infra/gormrepo"
 	"github.com/0x1F6A/proxy_VPN/internal/user/infra/rediskv"
 	"github.com/0x1F6A/proxy_VPN/internal/user/infra/smtpmail"
@@ -164,7 +173,25 @@ return u.PlanID, nil
 nodeH := nodehttp.New(nodeSvc, userHandler.AuthRequired(), httpapi.ClaimsFrom, planLoader)
 nodeH.Register(v1, r)
 
-// background workers
+// payment bounded context. We always register the mock provider so dev
+// environments work out of the box; alipay / wechat / usdt are only
+// registered if credentials are configured.
+providers := buildPaymentProviders(context.Background(), cfg, db)
+paySvc := paysvc.New(paysvc.Deps{
+	Payments:   payrepo.NewPaymentRepo(db.DB),
+	Pool:       payrepo.NewAddressPoolRepo(db.DB),
+	Cursor:     payrepo.NewChainScanCursor(db.DB),
+	Billing:    billingSvc,
+	Providers:  providers,
+	NotifyBase: cfg.Payment.NotifyBase,
+	ReturnBase: cfg.Payment.ReturnBase,
+})
+payH := payhttp.New(paySvc, userHandler.AuthRequired(), httpapi.ClaimsFrom)
+payH.Register(v1, r)
+
+// background workers — kept here as in-process fallback for single-node
+// deployments. When cmd/worker is also running, these become redundant
+// but remain safe (both call idempotent operations).
 go billingSvc.RunAutoCancelLoop(context.Background(), time.Minute, func(msg string, kv ...any) {
 _ = msg
 _ = kv
@@ -173,4 +200,48 @@ go nodeSvc.RunStaleMarker(context.Background(), 30*time.Second, func(msg string,
 _ = msg
 _ = kv
 })
+}
+
+// buildPaymentProviders constructs the channel→provider map based on what
+// credentials are present in the config. Channels with empty credentials
+// are silently skipped (the channel becomes unavailable, surface as
+// ErrChannelUnsupported on /orders/:no/pay).
+func buildPaymentProviders(ctx context.Context, cfg *config.Config, db *storage.MySQL) map[paydomain.Channel]payports.PaymentProvider {
+	out := map[paydomain.Channel]payports.PaymentProvider{}
+	// mock is always available, under both ChannelMock and (in mock mode)
+	// the alipay/wechat slots — useful for local dev.
+	mock := mockprov.New(mockprov.Config{Channel: paydomain.ChannelMock, Secret: cfg.Payment.MockSecret})
+	out[paydomain.ChannelMock] = mock
+	if cfg.Payment.Mode == "mock" {
+		out[paydomain.ChannelAlipay] = mockprov.New(mockprov.Config{Channel: paydomain.ChannelAlipay, Secret: cfg.Payment.MockSecret})
+		out[paydomain.ChannelWechat] = mockprov.New(mockprov.Config{Channel: paydomain.ChannelWechat, Secret: cfg.Payment.MockSecret})
+	}
+	if cfg.Payment.Alipay.AppID != "" && cfg.Payment.Alipay.PrivateKey != "" {
+		if p, err := alipayprov.New(alipayprov.Config{
+			AppID:           cfg.Payment.Alipay.AppID,
+			PrivateKey:      cfg.Payment.Alipay.PrivateKey,
+			AliPayPublicKey: cfg.Payment.Alipay.AliPayPublicKey,
+			Production:      cfg.Payment.Alipay.Production,
+		}); err == nil {
+			out[paydomain.ChannelAlipay] = p
+		}
+	}
+	if cfg.Payment.Wechat.MchID != "" && cfg.Payment.Wechat.PrivateKey != "" {
+		if p, err := wechatprov.New(ctx, wechatprov.Config{
+			MchID:         cfg.Payment.Wechat.MchID,
+			AppID:         cfg.Payment.Wechat.AppID,
+			SerialNo:      cfg.Payment.Wechat.SerialNo,
+			PrivateKeyPEM: cfg.Payment.Wechat.PrivateKey,
+			APIv3Key:      cfg.Payment.Wechat.APIv3Key,
+		}); err == nil {
+			out[paydomain.ChannelWechat] = p
+		}
+	}
+	if p, err := usdtprov.New(usdtprov.Config{
+		Pool:       payrepo.NewAddressPoolRepo(db.DB),
+		CNYPerUSDT: cfg.Payment.USDT.CNYPerUSDT,
+	}); err == nil {
+		out[paydomain.ChannelUSDT] = p
+	}
+	return out
 }
