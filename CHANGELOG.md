@@ -4,7 +4,11 @@ All notable changes to this project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] - Phase 6: Traffic accounting & ban list
+## [v0.1.0] - 2026-05-26
+
+First tagged release. Includes Phases 1-10 plus deployment & CI/CD pipeline. See per-section entries below.
+
+## [v0.1.0] - 2026-05-26 - Phase 6: Traffic accounting & ban list
 
 ### Added
 - New bounded context `internal/traffic` with domain / ports / service / infra layers (gormrepo / redisban / chsink).
@@ -114,7 +118,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - docs/api.md — 对外 / 管理 / 内部 gRPC API 设计 v0.1。
 - docs/开发顺序与稳定性检查.md — 10 阶段交付路线与稳定性 checklist。
 
-## [Unreleased] - Phase 7: Node config render + reload loop
+## [v0.1.0] - 2026-05-26 - Phase 7: Node config render + reload loop
 
 ### Added
 - `internal/node/service/nodecfg`: deterministic xray server-side config renderer (VLESS-Reality / Trojan / Hysteria2 / SS-2022) with stable version hash; per-user `email=u<id>` so xray Stats API queries are trivial.
@@ -122,7 +126,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - node-agent `configloop.go`: periodic config pull, atomic write to `--config-out`, optional `--reload-cmd` exec.
 - `SubscriberPort.ListActive` (excludes banned + expired plans) with gormrepo impl.
 
-## [Unreleased] - Phase 8: Admin user management + RBAC
+## [v0.1.0] - 2026-05-26 - Phase 8: Admin user management + RBAC
 
 ### Added
 - `ports.AdminUserRepo` + `gormrepo.AdminUserRepo`: list/search users (paged), set-banned, adjust traffic (signed delta with floor 0), set per-user rate limits, overall counts.
@@ -135,7 +139,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   - `POST /api/v1/admin/users/:id/rate`   (`up_bps`, `down_bps`)
 - Reusable `requireRole(...)` middleware in user/transport/httpapi.
 
-## [Unreleased] - Phase 9: Admin reports + ClickHouse rollup MV
+## [v0.1.0] - 2026-05-26 - Phase 9: Admin reports + ClickHouse rollup MV
 
 ### Added
 - New `report` bounded context (ports/service/infra/transport):
@@ -149,7 +153,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 - `chsink.Bootstrap` now also creates `traffic_user_daily` SummingMergeTree + `mv_traffic_user_daily` materialised view, so per-user daily totals stream automatically from the raw events table.
 
-## [Unreleased] - Phase 10: Observability + blue/green ops
+## [v0.1.0] - 2026-05-26 - Phase 10: Observability + blue/green ops
 
 ### Added
 - `httpx.Metrics()` Gin middleware: `http_requests_total{method,route,status}` counter, `http_request_duration_seconds{method,route}` histogram (5ms..20s exp×2 buckets), `http_requests_in_flight` gauge. Uses `c.FullPath()` for low-cardinality route labels.
@@ -158,7 +162,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 Note: `/healthz`, `/readyz`, `/metrics` endpoints and MySQL/Redis readiness checks were already in place; this phase adds per-request metrics and the operations runbook on top.
 
-## [Unreleased] - Deployment: Dockerfile (multi-bin) + docker-compose + Helm
+## [v0.1.0] - 2026-05-26 - Deployment: Dockerfile (multi-bin) + docker-compose + Helm
 
 ### Added
 - `deploy/docker-compose.yml`: production-style stack (api+worker+mysql+redis), config via PROXYVPN_* env.
@@ -177,7 +181,7 @@ Note: `/healthz`, `/readyz`, `/metrics` endpoints and MySQL/Redis readiness chec
 
 Verified: `helm lint` + `helm template` clean; `docker compose -f deploy/docker-compose.yml config` valid.
 
-## [Unreleased] - CI/CD: GitHub Actions release pipeline
+## [v0.1.0] - 2026-05-26 - CI/CD: GitHub Actions release pipeline
 
 ### Added
 - `.github/workflows/release.yml`: tag-triggered (v*.*.*) pipeline
