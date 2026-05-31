@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Run gosec
-        uses: securego/gosec@master
+        uses: securego/gosec@4a3bd8af174872c778439083ded7adbf3747e770 # v2.26.1
         with:
           # Exclusions rationale:
           #   G115 (int overflow on conversion) — false positives flood from
@@ -40,7 +40,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Run Trivy filesystem scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           ignore-unfixed: true
