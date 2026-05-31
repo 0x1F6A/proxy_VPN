@@ -81,6 +81,4 @@ go run ./cmd/api
 - 提交：[Conventional Commits](https://www.conventionalcommits.org/)
 - PR 需通过 CI + 至少 1 人 review，涉及钱/鉴权/密钥需 2 人 review
 
-## License
 
-私有项目，未授权前禁止使用、复制或再分发。
