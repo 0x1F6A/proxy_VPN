@@ -1,4 +1,10 @@
 -- Phase 15-C: 工单系统 + 用户 locale。
+--
+-- 000001 曾以旧设计创建 `tickets` / `ticket_replies`（未被任何代码引用）。
+-- 本阶段重新设计为 `tickets`（含 assignee_id） + `ticket_messages`，
+-- 因此先丢弃旧表再重建，保证全新库与已部署旧库都能一致迁移。
+DROP TABLE IF EXISTS `ticket_replies`;
+DROP TABLE IF EXISTS `tickets`;
 
 CREATE TABLE `tickets` (
   `id`           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

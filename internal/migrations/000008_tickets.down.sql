@@ -1,3 +1,3 @@
 ALTER TABLE `users` DROP COLUMN `locale`;
-DROP TABLE `ticket_messages`;
-DROP TABLE `tickets`;
+DROP TABLE IF EXISTS `ticket_messages`;
+DROP TABLE IF EXISTS `tickets`;
