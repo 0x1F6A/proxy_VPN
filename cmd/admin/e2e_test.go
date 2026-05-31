@@ -48,6 +48,10 @@ func TestAdminE2ELoginListBan(t *testing.T) {
 		Payment:    config.PaymentConfig{Mode: "mock", MockSecret: "mock"},
 		Traffic:    config.TrafficConfig{ReportInterval: 30 * time.Second, BanCacheTTL: time.Minute, RateDefaultUpMbps: 100, RateDefaultDownMbps: 100},
 		ClickHouse: config.ClickHouseConfig{Enabled: false},
+		I18n: config.I18nConfig{
+			DefaultLocale:    "en",
+			SupportedLocales: []string{"en", "zh-CN", "zh-TW", "ja"},
+		},
 	}
 
 	mySQL := &storage.MySQL{DB: db}

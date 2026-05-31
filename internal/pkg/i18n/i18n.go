@@ -26,6 +26,10 @@ type Bundle struct {
 // New 解析 messages/<locale>.toml 文件列表，construct Bundle。defaultLocale 用
 // 作 fallback。
 func New(defaultLocale string, locales []string) (*Bundle, error) {
+	defaultLocale = strings.TrimSpace(defaultLocale)
+	if defaultLocale == "" {
+		defaultLocale = "en"
+	}
 	b := &Bundle{
 		defaultLocale: defaultLocale,
 		messages:      make(map[string]map[string]string),
@@ -34,6 +38,10 @@ func New(defaultLocale string, locales []string) (*Bundle, error) {
 		locales = []string{defaultLocale}
 	}
 	for _, loc := range locales {
+		loc = strings.TrimSpace(loc)
+		if loc == "" {
+			continue
+		}
 		flat, err := loadLocale(loc)
 		if err != nil {
 			return nil, fmt.Errorf("i18n load %s: %w", loc, err)

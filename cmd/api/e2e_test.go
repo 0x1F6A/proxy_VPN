@@ -78,6 +78,10 @@ func TestAPIE2EUserOrderSubscription(t *testing.T) {
 			RateDefaultUpMbps: 100, RateDefaultDownMbps: 100,
 		},
 		ClickHouse: config.ClickHouseConfig{Enabled: false},
+		I18n: config.I18nConfig{
+			DefaultLocale:    "en",
+			SupportedLocales: []string{"en", "zh-CN", "zh-TW", "ja"},
+		},
 	}
 
 	mySQL := &storage.MySQL{DB: db}
